@@ -15,6 +15,7 @@ import time
 import uuid
 import zipfile
 import base64
+from imd2raw import IMDConverter, DiskImageValidator
 
 # Global variables
 current_operations = {}
@@ -192,9 +193,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         <!-- Upload Section -->
         <div class="upload-section">
-            <h3>Select RT-11 Disk Image (.dsk)</h3>
+            <h3>Select RT-11 Disk Image (.dsk, .imd, .raw, .img)</h3>
             <form id="uploadForm">
-                <input type="file" id="fileInput" accept=".dsk" required>
+                <input type="file" id="fileInput" accept=".dsk,.imd,.raw,.img" required>
                 <br>
                 <button type="submit">📁 Upload & Scan</button>
                 <button type="button" onclick="clearAll()">🗑️ Clear</button>
@@ -354,13 +355,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 return;
             }
 
-            if (!file.name.toLowerCase().endsWith('.dsk')) {
-                showStatus('Please select a .dsk file', 'error');
+            const validExtensions = ['.dsk', '.imd', '.raw', '.img'];
+            const fileExt = file.name.toLowerCase();
+            const isValidFile = validExtensions.some(ext => fileExt.endsWith(ext));
+            
+            if (!isValidFile) {
+                showStatus('Please select a disk image file (.dsk, .imd, .raw, .img)', 'error');
                 return;
             }
 
             try {
-                showStatus('<span class="spinner"></span>Uploading and scanning file...', 'info');
+                const isIMD = fileExt.endsWith('.imd');
+                if (isIMD) {
+                    showStatus('<span class="spinner"></span>Uploading IMD file and converting to DSK...', 'info');
+                } else {
+                    showStatus('<span class="spinner"></span>Uploading and scanning file...', 'info');
+                }
                 showProgress(true);
                 updateProgress(0);
                 updateFileInfo(file.name, file.size);
@@ -795,8 +805,41 @@ def scan_files_thread(operation_id):
     """Background thread for scanning files"""
     try:
         operation = current_operations[operation_id]
+        
+        # Check if we need to convert IMD first
+        dsk_path = operation['dsk_path']
+        original_path = dsk_path
+        
+        format_type = DiskImageValidator.get_disk_format(str(dsk_path))
+        
+        if format_type == "IMD":
+            operation['logs'].append("Detected ImageDisk (IMD) format - converting to DSK...")
+            operation['progress'] = 5
+            
+            # Create converted DSK filename
+            converted_dsk = operation['temp_dir'] / (dsk_path.stem + "_converted.dsk")
+            
+            # Perform IMD conversion
+            converter = IMDConverter(str(dsk_path), str(converted_dsk), verbose=False)
+            success = converter.convert()
+            
+            if not success:
+                operation['error'] = "Failed to convert IMD file to DSK format"
+                operation['logs'].append(f"Error: {operation['error']}")
+                operation['completed'] = True
+                operation['progress'] = 100
+                return
+                
+            operation['logs'].append("IMD conversion completed successfully!")
+            operation['logs'].append(f"Converted: {dsk_path.name} -> {converted_dsk.name}")
+            
+            # Update the path to use converted file
+            dsk_path = converted_dsk
+            operation['dsk_path'] = dsk_path
+            operation['progress'] = 10
+        
         operation['logs'].append("Starting RT-11 scan...")
-        operation['progress'] = 10
+        operation['progress'] = 15
         
         # Create output directory for scanning
         scan_dir = operation['temp_dir'] / 'scan_output'
