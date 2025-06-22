@@ -1526,11 +1526,11 @@ def main():
                     failed_count += 1
             
             # Summary
-            print(f"\n✅ Extraction complete!")
-            print(f"✓ Successfully extracted: {extracted_count} files")
+            print(f"\n[OK] Extraction complete!")
+            print(f"[+] Successfully extracted: {extracted_count} files")
             if failed_count > 0:
-                print(f"✗ Failed to extract: {failed_count} files")
-            print(f"📁 Output directory: {output_dir.absolute()}")
+                print(f"[-] Failed to extract: {failed_count} files")
+            print(f"[OUT] Output directory: {output_dir.absolute()}")
             
             return 0 if failed_count == 0 else 1
         
@@ -1541,7 +1541,7 @@ def main():
         
         # Check input file
         if not os.path.exists(args.image):
-            print(f"❌ Error: Image file not found: {args.image}")
+            print(f"[ERROR] Image file not found: {args.image}")
             return 1
         
         # Create output directory
@@ -1607,19 +1607,19 @@ def main():
                 failed_count += 1
         
         # Summary
-        print(f"\n✅ Extraction complete!")
-        print(f"✓ Successfully extracted: {extracted_count} files")
+        print(f"\n[OK] Extraction complete!")
+        print(f"[+] Successfully extracted: {extracted_count} files")
         if failed_count > 0:
-            print(f"✗ Failed to extract: {failed_count} files")
-        print(f"📁 Output directory: {output_dir.absolute()}")
+            print(f"[-] Failed to extract: {failed_count} files")
+        print(f"[OUT] Output directory: {output_dir.absolute()}")
         
         return 0 if failed_count == 0 else 1
                 
     except KeyboardInterrupt:
-        print("\n🛑 Operation cancelled by user")
+        print("\n[CANCELLED] Operation cancelled by user")
         return 130
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n[ERROR] {e}")
         if args.verbose:
             import traceback
             traceback.print_exc()
