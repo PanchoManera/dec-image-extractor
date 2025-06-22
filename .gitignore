@@ -1,0 +1,67 @@
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+venv_build/
+ENV/
+env.bak/
+venv.bak/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Temporary build files
+*.tmp
+*.temp
+temp/
+
+# Logs
+*.log
+
+# Generated executables and packages (keep only sources)
+RT11ExtractGUI-*
+RT11Extract-*
+RT11Extractor-*
+*.exe
+*.app
+*.dmg
+*.zip
+
+# Python embedded distributions
+python_win32/
+python_win64/
+python_winarm64/
+
+# Test artifacts
+*-Test/
