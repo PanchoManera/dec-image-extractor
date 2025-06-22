@@ -47,6 +47,25 @@ Then open http://localhost:8000 in your browser.
 - **`binaries/windows/`** - Build kit for Windows 32-bit executable
   - Run `build_windows.bat` on any Windows machine to create the .exe
 
+## 📚 **Technical Documentation**
+
+🎯 **Want to understand how RT-11 works internally?** We have complete technical documentation:
+
+- **[RT11_Technical_Guide.pdf](RT11_Technical_Guide.pdf)** - Professional PDF guide (40+ pages)
+- **[RT11_Technical_Guide.md](RT11_Technical_Guide.md)** - Markdown version
+- **[TECHNICAL_DOCUMENTATION.md](TECHNICAL_DOCUMENTATION.md)** - How to use and generate docs
+
+### 🔬 What you'll learn:
+- **Physical disk structure** - How RT-11 organizes data on disk
+- **RADIX-50 encoding** - The alphabet RT-11 uses for filenames
+- **16-bit date format** - How RT-11 stores dates in just 2 bytes
+- **Complete extraction process** - Step-by-step breakdown
+- **Error recovery** - How to handle damaged disk images
+- **Practical examples** - Real code for decoding structures
+- **Reference tables** - Complete lookup tables and constants
+
+The documentation includes diagrams, Python code examples, and explanations that anyone can understand - from curious users to developers building their own extractors.
+
 ## 🔧 **Features**
 
 ✅ **Complete RT-11 filesystem support**
