@@ -31,7 +31,7 @@ jobs:
     
     - name: Build executable with PyInstaller
       run: |
-        pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.ico" --add-data "images.png;." rt11extract_gui.py
+        pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.ico" --add-data "images.png;." --add-binary "rt11extract;." rt11extract_gui.py
         
     - name: Build CLI executable
       run: |
@@ -80,10 +80,10 @@ jobs:
     - name: Build executable with PyInstaller
       run: |
         if [ "${{ matrix.arch }}" = "arm64" ]; then
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.ico" --add-data "images.png:." --target-arch arm64 rt11extract_gui.py
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.ico" --add-data "images.png:." --add-binary "rt11extract:." --target-arch arm64 rt11extract_gui.py
           pyinstaller --onefile --name "RT11Extract" --icon="icon.ico" --target-arch arm64 rt11extract
         else
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.ico" --add-data "images.png:." --target-arch x86_64 rt11extract_gui.py
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.ico" --add-data "images.png:." --add-binary "rt11extract:." --target-arch x86_64 rt11extract_gui.py
           pyinstaller --onefile --name "RT11Extract" --icon="icon.ico" --target-arch x86_64 rt11extract
         fi
     
@@ -142,7 +142,7 @@ jobs:
           echo "ARM64 build skipped for Linux in this workflow"
           exit 0
         else
-          pyinstaller --onefile --name "RT11ExtractGUI" --add-data "images.png:." rt11extract_gui.py
+          pyinstaller --onefile --name "RT11ExtractGUI" --add-data "images.png:." --add-binary "rt11extract:." rt11extract_gui.py
           pyinstaller --onefile --name "RT11Extract" rt11extract
         fi
     

@@ -22,11 +22,19 @@ import sys
 if getattr(sys, 'frozen', False):
     # Running as compiled executable
     script_dir = Path(sys._MEIPASS)
-    rt11extract_path = script_dir / "rt11extract"  # Will be executed with python
+    # Check for different executable names based on platform
+    if sys.platform.startswith('win'):
+        rt11extract_path = script_dir / "RT11Extract.exe"
+    else:
+        rt11extract_path = script_dir / "RT11Extract"
 else:
     # Running as script
     script_dir = Path(__file__).parent
-    rt11extract_path = script_dir / "rt11extract"
+    # Check for different executable names based on platform
+    if sys.platform.startswith('win'):
+        rt11extract_path = script_dir / "RT11Extract.exe"
+    else:
+        rt11extract_path = script_dir / "rt11extract"
 
 class RT11ExtractGUI:
     def __init__(self, root):
@@ -243,11 +251,11 @@ class RT11ExtractGUI:
             
             # First run rt11extract in list mode to get file info with dates
             if getattr(sys, 'frozen', False):
-                # Running as bundled executable - run rt11extract with python
-                cmd_list = [sys.executable, str(rt11extract_path), self.current_file, '-l']
-            else:
-                # Running as script - run rt11extract directly
+                # Running as bundled executable - run rt11extract directly (it's included in bundle)
                 cmd_list = [str(rt11extract_path), self.current_file, '-l']
+            else:
+                # Running as script - run rt11extract with python (it's a python script)
+                cmd_list = [sys.executable, str(rt11extract_path), self.current_file, '-l']
             self.log(f"Running: {' '.join(cmd_list)}")
             
             list_result = subprocess.run(
@@ -262,11 +270,11 @@ class RT11ExtractGUI:
             scan_dir.mkdir(exist_ok=True)
             
             if getattr(sys, 'frozen', False):
-                # Running as bundled executable - run rt11extract with python
-                cmd = [sys.executable, str(rt11extract_path), self.current_file, '-o', str(scan_dir), '-v']
-            else:
-                # Running as script - run rt11extract directly
+                # Running as bundled executable - run rt11extract directly (it's included in bundle)
                 cmd = [str(rt11extract_path), self.current_file, '-o', str(scan_dir), '-v']
+            else:
+                # Running as script - run rt11extract with python (it's a python script)
+                cmd = [sys.executable, str(rt11extract_path), self.current_file, '-o', str(scan_dir), '-v']
             self.log(f"Running: {' '.join(cmd)}")
             
             result = subprocess.run(
@@ -428,11 +436,11 @@ class RT11ExtractGUI:
             
             # Run rt11extract for extraction
             if getattr(sys, 'frozen', False):
-                # Running as bundled executable - run rt11extract with python
-                cmd = [sys.executable, str(rt11extract_path), self.current_file, '-o', str(self.output_dir), '-v']
-            else:
-                # Running as script - run rt11extract directly
+                # Running as bundled executable - run rt11extract directly (it's included in bundle)
                 cmd = [str(rt11extract_path), self.current_file, '-o', str(self.output_dir), '-v']
+            else:
+                # Running as script - run rt11extract with python (it's a python script)
+                cmd = [sys.executable, str(rt11extract_path), self.current_file, '-o', str(self.output_dir), '-v']
             self.log(f"Running: {' '.join(cmd)}")
             
             result = subprocess.run(
