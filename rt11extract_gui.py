@@ -14,6 +14,7 @@ import zipfile
 import uuid
 from datetime import datetime
 import webbrowser
+from imd2raw import IMDConverter, DiskImageValidator
 
 # Windows-specific imports for hiding console
 if sys.platform == "win32":
@@ -58,6 +59,7 @@ class RT11ExtractGUI:
         self.temp_dir = None
         self.output_dir = None
         self.is_extracting = False
+        self.converted_dsk_file = None  # For IMD->DSK conversion
         
         # Set icon (DEC logo text as fallback)
         try:
@@ -67,7 +69,20 @@ class RT11ExtractGUI:
             pass
         
         self.setup_ui()
+        self.setup_menu()
         self.check_rt11extract()
+        
+    def setup_menu(self):
+        """Setup menu bar"""
+        menubar = tk.Menu(self.root)
+        self.root.config(menu=menubar)
+        
+        # Tools menu
+        tools_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Tools", menu=tools_menu)
+        tools_menu.add_command(label="Convert IMD to DSK/RAW...", command=self.convert_imd_to_dsk)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="About", command=self.show_about)
         
     def setup_ui(self):
         # Configure style
@@ -231,10 +246,21 @@ class RT11ExtractGUI:
         """Browse for DSK file"""
         filename = filedialog.askopenfilename(
             title="Select RT-11 Disk Image",
-            filetypes=[("Disk Image Files", "*.dsk"), ("All Files", "*.*")]
+            filetypes=[("Disk Image Files", "*.dsk *.raw *.img *.imd"), ("DSK Files", "*.dsk"), ("RAW Files", "*.raw"), ("IMG Files", "*.img"), ("ImageDisk Files", "*.imd"), ("All Files", "*.*")]
         )
         
         if filename:
+            # Validate the selected file
+            format_type = DiskImageValidator.get_disk_format(filename)
+            
+            if format_type == "IMD":
+                self.log(f"Detected ImageDisk (IMD) format: {filename}")
+            elif format_type == "RT11_DSK":
+                self.log(f"Detected disk image format: {filename}")
+            else:
+                # Only show warning, don't prevent usage
+                self.log(f"Warning: Could not identify disk format, will attempt to process: {filename}")
+                
             self.file_var.set(filename)
             self.current_file = filename
             self.scan_btn.config(state="normal")
@@ -255,8 +281,57 @@ class RT11ExtractGUI:
         self.extract_all_btn.config(state="disabled")
         self.extract_selected_btn.config(state="disabled")
         
-        # Start scan in background thread
-        threading.Thread(target=self._scan_thread, daemon=True).start()
+        # Check if we need to convert IMD first
+        format_type = DiskImageValidator.get_disk_format(self.current_file)
+        
+        if format_type == "IMD":
+            # Start IMD conversion + scan in background thread
+            threading.Thread(target=self._scan_with_imd_conversion_thread, daemon=True).start()
+        else:
+            # Start regular scan in background thread
+            threading.Thread(target=self._scan_thread, daemon=True).start()
+        
+    def _scan_with_imd_conversion_thread(self):
+        """Background thread for IMD conversion + scanning"""
+        try:
+            self.root.after(0, lambda: self.progress_var.set("Converting IMD to DSK..."))
+            self.root.after(0, lambda: self.progress_bar.config(mode='indeterminate'))
+            self.root.after(0, lambda: self.progress_bar.start())
+            
+            # Create temporary DSK file
+            if self.temp_dir:
+                shutil.rmtree(self.temp_dir, ignore_errors=True)
+            self.temp_dir = Path(tempfile.mkdtemp(prefix="rt11extract_"))
+            
+            # Generate temporary DSK filename
+            dsk_filename = self.temp_dir / (Path(self.current_file).stem + "_converted.dsk")
+            self.converted_dsk_file = str(dsk_filename)
+            
+            self.log(f"Converting IMD to DSK: {os.path.basename(self.current_file)} -> {dsk_filename.name}")
+            
+            # Perform IMD conversion
+            converter = IMDConverter(self.current_file, str(dsk_filename), verbose=False)
+            success = converter.convert()
+            
+            if not success:
+                self.log("IMD conversion failed")
+                self.root.after(0, lambda: self._scan_error("Failed to convert IMD file to DSK format"))
+                return
+                
+            self.log("IMD conversion completed, starting scan...")
+            
+            # Now scan the converted DSK file
+            self.root.after(0, lambda: self.progress_var.set("Scanning converted disk image..."))
+            
+            # Continue with regular scan using converted file
+            self._perform_scan(str(dsk_filename))
+            
+        except Exception as e:
+            self.log(f"Exception during IMD conversion + scan: {str(e)}")
+            self.root.after(0, lambda: self._scan_error(str(e)))
+        finally:
+            # Re-enable UI
+            self.root.after(0, self._scan_finished)
         
     def _scan_thread(self):
         """Background thread for scanning"""
@@ -272,61 +347,66 @@ class RT11ExtractGUI:
             
             self.log("Starting scan...")
             
-            # First run rt11extract in list mode to get file info with dates
-            if getattr(sys, 'frozen', False):
-                # Running as bundled executable - run rt11extract directly (it's included in bundle)
-                cmd_list = [str(rt11extract_path), self.current_file, '-l']
-            else:
-                # Running as script - run rt11extract with python (it's a python script)
-                cmd_list = [sys.executable, str(rt11extract_path), self.current_file, '-l']
-            self.log(f"Running: {' '.join(cmd_list)}")
+            # Perform scan
+            self._perform_scan(self.current_file)
             
-            list_result = subprocess.run(cmd_list, **self._get_subprocess_kwargs())
-            
-            # Then run rt11extract to actually extract files for verification
-            scan_dir = self.temp_dir / 'scan_output'
-            scan_dir.mkdir(exist_ok=True)
-            
-            if getattr(sys, 'frozen', False):
-                # Running as bundled executable - run rt11extract directly (it's included in bundle)
-                cmd = [str(rt11extract_path), self.current_file, '-o', str(scan_dir), '-v']
-            else:
-                # Running as script - run rt11extract with python (it's a python script)
-                cmd = [sys.executable, str(rt11extract_path), self.current_file, '-o', str(scan_dir), '-v']
-            self.log(f"Running: {' '.join(cmd)}")
-            
-            result = subprocess.run(cmd, **self._get_subprocess_kwargs())
-            
-            if result.stdout:
-                self.log("STDOUT:")
-                for line in result.stdout.split('\n'):
-                    if line.strip():
-                        self.log(f"  {line}")
-            
-            if result.stderr:
-                self.log("STDERR:")
-                for line in result.stderr.split('\n'):
-                    if line.strip():
-                        self.log(f"  {line}")
-            
-            if result.returncode == 0:
-                # Parse extracted files
-                files = self._parse_extracted_files(scan_dir, result.stdout, list_result.stdout)
-                self.current_files = files
-                
-                # Update UI in main thread
-                self.root.after(0, self._update_files_ui, files)
-                self.log(f"Scan completed successfully! Found {len(files)} files.")
-            else:
-                self.log(f"Error: rt11extract failed with return code {result.returncode}")
-                self.root.after(0, self._scan_error, f"rt11extract failed with return code {result.returncode}")
-                
         except Exception as e:
             self.log(f"Exception during scan: {str(e)}")
             self.root.after(0, self._scan_error, str(e))
         finally:
             # Re-enable UI
             self.root.after(0, self._scan_finished)
+            
+    def _perform_scan(self, disk_file: str):
+        """Perform the actual scan operation"""
+        # First run rt11extract in list mode to get file info with dates
+        if getattr(sys, 'frozen', False):
+            # Running as bundled executable - run rt11extract directly (it's included in bundle)
+            cmd_list = [str(rt11extract_path), disk_file, '-l']
+        else:
+            # Running as script - run rt11extract with python (it's a python script)
+            cmd_list = [sys.executable, str(rt11extract_path), disk_file, '-l']
+        self.log(f"Running: {' '.join(cmd_list)}")
+        
+        list_result = subprocess.run(cmd_list, **self._get_subprocess_kwargs())
+        
+        # Then run rt11extract to actually extract files for verification
+        scan_dir = self.temp_dir / 'scan_output'
+        scan_dir.mkdir(exist_ok=True)
+        
+        if getattr(sys, 'frozen', False):
+            # Running as bundled executable - run rt11extract directly (it's included in bundle)
+            cmd = [str(rt11extract_path), disk_file, '-o', str(scan_dir), '-v']
+        else:
+            # Running as script - run rt11extract with python (it's a python script)
+            cmd = [sys.executable, str(rt11extract_path), disk_file, '-o', str(scan_dir), '-v']
+        self.log(f"Running: {' '.join(cmd)}")
+        
+        result = subprocess.run(cmd, **self._get_subprocess_kwargs())
+        
+        if result.stdout:
+            self.log("STDOUT:")
+            for line in result.stdout.split('\n'):
+                if line.strip():
+                    self.log(f"  {line}")
+        
+        if result.stderr:
+            self.log("STDERR:")
+            for line in result.stderr.split('\n'):
+                if line.strip():
+                    self.log(f"  {line}")
+        
+        if result.returncode == 0:
+            # Parse extracted files
+            files = self._parse_extracted_files(scan_dir, result.stdout, list_result.stdout)
+            self.current_files = files
+            
+            # Update UI in main thread
+            self.root.after(0, self._update_files_ui, files)
+            self.log(f"Scan completed successfully! Found {len(files)} files.")
+        else:
+            self.log(f"Error: rt11extract failed with return code {result.returncode}")
+            self.root.after(0, self._scan_error, f"rt11extract failed with return code {result.returncode}")
             
     def _scan_finished(self):
         """Re-enable UI after scan"""
@@ -598,6 +678,7 @@ class RT11ExtractGUI:
             shutil.rmtree(self.temp_dir, ignore_errors=True)
         self.temp_dir = None
         self.output_dir = None
+        self.converted_dsk_file = None
         
         # Reset UI
         self.scan_btn.config(state="disabled")
@@ -615,6 +696,79 @@ class RT11ExtractGUI:
         self.log_text.config(state="disabled")
         
         self.log("Cleared all data.")
+        
+    def convert_imd_to_dsk(self):
+        """Convert IMD file to DSK/RAW format"""
+        # Select input IMD file
+        input_file = filedialog.askopenfilename(
+            title="Select IMD Image File",
+            filetypes=[("ImageDisk Files", "*.imd"), ("All Files", "*.*")]
+        )
+        
+        if not input_file:
+            return
+            
+        # Select output DSK file
+        output_file = filedialog.asksaveasfilename(
+            title="Save DSK/RAW File As...",
+            initialfile=os.path.splitext(os.path.basename(input_file))[0] + ".dsk",
+            defaultextension=".dsk",
+            filetypes=[("DSK Files", "*.dsk"), ("RAW Files", "*.raw"), ("All Files", "*.*")]
+        )
+        
+        if not output_file:
+            return
+            
+        # Start conversion in background thread
+        threading.Thread(target=self._convert_imd_thread, args=(input_file, output_file), daemon=True).start()
+        
+    def _convert_imd_thread(self, input_file, output_file):
+        """Background thread for IMD conversion"""
+        try:
+            self.root.after(0, lambda: self.progress_var.set("Converting IMD to DSK..."))
+            self.root.after(0, lambda: self.progress_bar.config(mode='indeterminate'))
+            self.root.after(0, lambda: self.progress_bar.start())
+            
+            self.log(f"Starting IMD conversion: {os.path.basename(input_file)} -> {os.path.basename(output_file)}")
+            
+            # Create converter instance
+            converter = IMDConverter(input_file, output_file, verbose=False)
+            
+            # Perform conversion
+            success = converter.convert()
+            
+            if success:
+                self.log("IMD conversion completed successfully!")
+                self.root.after(0, lambda: messagebox.showinfo("Success", 
+                    f"IMD file converted successfully!\n\nInput: {os.path.basename(input_file)}\nOutput: {os.path.basename(output_file)}"))
+            else:
+                self.log("IMD conversion failed.")
+                self.root.after(0, lambda: messagebox.showerror("Error", "IMD conversion failed. Check the log for details."))
+                
+        except Exception as e:
+            self.log(f"Exception during IMD conversion: {str(e)}")
+            self.root.after(0, lambda: messagebox.showerror("Error", f"IMD conversion failed:\n{str(e)}"))
+        finally:
+            self.root.after(0, lambda: self.progress_bar.stop())
+            self.root.after(0, lambda: self.progress_bar.config(mode='determinate'))
+            self.root.after(0, lambda: self.progress_var.set("Ready"))
+            
+    def show_about(self):
+        """Show about dialog"""
+        about_text = """RT-11 Extract GUI
+        
+A graphical interface for extracting files from RT-11 disk images.
+
+Features:
+• Extract files from RT-11 disk images (.dsk, .raw, .img)
+• Convert ImageDisk (.imd) files to DSK/RAW format
+• Browse and preview file contents
+• Batch extraction capabilities
+
+Based on the RT-11 file system used by
+Digital Equipment Corporation (DEC) computers."""
+        
+        messagebox.showinfo("About RT-11 Extract GUI", about_text)
         
     def on_closing(self):
         """Handle application closing"""
