@@ -31,11 +31,11 @@ jobs:
     
     - name: Build executable with PyInstaller
       run: |
-        if exist icon.png (
+        if (Test-Path "icon.png") {
           pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png;." rt11extract_gui.py
-        ) else (
+        } else {
           pyinstaller --onefile --windowed --name "RT11ExtractGUI" rt11extract_gui.py
-        )
+        }
         
     - name: Build CLI executable
       run: |
