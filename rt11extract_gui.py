@@ -20,8 +20,8 @@ import sys
 
 # Determine if running as script or frozen exe
 if getattr(sys, 'frozen', False):
-    # Running as compiled executable
-    script_dir = Path(sys._MEIPASS)
+    # Running as compiled executable - look in same directory as executable
+    script_dir = Path(sys.executable).parent
     # Check for different executable names based on platform
     if sys.platform.startswith('win'):
         rt11extract_path = script_dir / "RT11Extract.exe"
