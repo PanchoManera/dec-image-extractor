@@ -244,7 +244,18 @@ jobs:
         done
         
         echo "## Archivos disponibles para descarga:" >> BUILD_SUMMARY.md
-        find . -name "RT11Extract*" -type f | sort >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Ejecutables Windows (.exe):" >> BUILD_SUMMARY.md
+        find . -name "RT11Extract*Win*.exe" -type f | sort >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Ejecutables macOS:" >> BUILD_SUMMARY.md
+        find . -name "RT11Extract*macOS*" -type f | sort >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Ejecutables Linux:" >> BUILD_SUMMARY.md
+        find . -name "RT11Extract*Linux*" -type f | sort >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Todos los archivos RT11Extract:" >> BUILD_SUMMARY.md
+        find . -name "*RT11Extract*" -type f | sort >> BUILD_SUMMARY.md
         
         cat BUILD_SUMMARY.md
     
