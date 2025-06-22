@@ -31,8 +31,8 @@ jobs:
     
     - name: Build executable with PyInstaller
       run: |
-        if exist icon.ico (
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.ico" rt11extract_gui.py
+        if exist icon.png (
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png;." rt11extract_gui.py
         ) else (
           pyinstaller --onefile --windowed --name "RT11ExtractGUI" rt11extract_gui.py
         )
@@ -91,11 +91,19 @@ jobs:
     - name: Build executable with PyInstaller
       run: |
         if [ "${{ matrix.arch }}" = "arm64" ]; then
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch arm64 rt11extract_gui.py
+          if [ -f "icon.png" ]; then
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --target-arch arm64 rt11extract_gui.py
+          else
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch arm64 rt11extract_gui.py
+          fi
           pyinstaller --onefile --name "RT11Extract" --target-arch arm64 rt11extract
           pyinstaller --onefile --name "imd2raw" --target-arch arm64 imd2raw.py
         else
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch x86_64 rt11extract_gui.py
+          if [ -f "icon.png" ]; then
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --target-arch x86_64 rt11extract_gui.py
+          else
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch x86_64 rt11extract_gui.py
+          fi
           pyinstaller --onefile --name "RT11Extract" --target-arch x86_64 rt11extract
           pyinstaller --onefile --name "imd2raw" --target-arch x86_64 imd2raw.py
         fi
@@ -160,7 +168,11 @@ jobs:
           echo "ARM64 build skipped for Linux in this workflow"
           exit 0
         else
-          pyinstaller --onefile --name "RT11ExtractGUI" rt11extract_gui.py
+          if [ -f "icon.png" ]; then
+            pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." rt11extract_gui.py
+          else
+            pyinstaller --onefile --name "RT11ExtractGUI" rt11extract_gui.py
+          fi
           pyinstaller --onefile --name "RT11Extract" rt11extract
           pyinstaller --onefile --name "imd2raw" imd2raw.py
         fi

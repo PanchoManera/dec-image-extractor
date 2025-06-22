@@ -103,6 +103,24 @@ All components are written in pure Python with no external dependencies beyond t
 - **GUI application** - Tkinter-based desktop interface with IMD support
 - **Web interface** - HTTP server with HTML5 interface
 
+## 📚 **Technical References**
+
+This project builds upon extensive research and documentation:
+
+### Primary Sources
+1. **[putr.asm by D-Bit](http://www.dbit.com/putr/putr.asm)** - Original ASM implementation that served as the foundation for this project's RT-11 filesystem parsing logic
+
+2. **[RT-11 Technical Documentation from DEC](https://ia802804.us.archive.org/31/items/DIGITAL_Guide_to_RT-11_Documentation/DIGITAL_Guide_to_RT-11_Documentation.pdf)** - Official Digital Equipment Corporation guide to RT-11 documentation
+
+3. **[RT-11 Volume and File Formats Manual](http://www.bitsavers.org/pdf/dec/pdp11/rt11/v5.6_Aug91/AA-PD6PA-TC_RT-11_Volume_and_File_Formats_Manual_Aug91.pdf)** - Comprehensive technical specification of RT-11 filesystem structures (v5.6, August 1991)
+
+4. **[The Open SIMH Project](https://github.com/open-simh/simh)** - Historical computer simulation project that provides invaluable context for understanding vintage computing systems
+
+### Additional Resources
+- **Bitsavers.org** - Digital preservation of computer documentation
+- **Archive.org** - Historical computing documentation archive
+- **PDP-11 Community** - Ongoing preservation and documentation efforts
+
 ## 📄 **License**
 
 This project maintains the DEC heritage spirit - built for preservation and accessibility of historical computing systems.
