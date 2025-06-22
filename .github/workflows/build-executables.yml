@@ -31,26 +31,37 @@ jobs:
     
     - name: Build executable with PyInstaller
       run: |
-        pyinstaller --onefile --windowed --name "RT11ExtractGUI" rt11extract_gui.py
+        if exist icon.ico (
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.ico" rt11extract_gui.py
+        ) else (
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" rt11extract_gui.py
+        )
         
     - name: Build CLI executable
       run: |
         pyinstaller --onefile --name "RT11Extract" rt11extract
+        
+    - name: Build IMD converter
+      run: |
+        pyinstaller --onefile --name "imd2raw" imd2raw.py
     
     - name: Create Windows package
       run: |
         mkdir RT11Extractor-Windows-${{ matrix.arch }}
         copy dist\RT11ExtractGUI.exe RT11Extractor-Windows-${{ matrix.arch }}\
         copy dist\RT11Extract.exe RT11Extractor-Windows-${{ matrix.arch }}\
+        copy dist\imd2raw.exe RT11Extractor-Windows-${{ matrix.arch }}\
         copy README.md RT11Extractor-Windows-${{ matrix.arch }}\
         echo "RT-11 Extractor para Windows ${{ matrix.arch }}" > RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "Ejecutables incluidos:" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "- RT11ExtractGUI.exe (Interfaz gráfica)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "- RT11Extract.exe (Línea de comandos)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "- RT11ExtractGUI.exe (Interfaz gráfica con soporte IMD)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "- RT11Extract.exe (Extractor línea de comandos)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "- imd2raw.exe (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "Para usar la interfaz gráfica, ejecute RT11ExtractGUI.exe" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "Para usar desde línea de comandos, ejecute RT11Extract.exe" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "Para extraer archivos desde línea de comandos: RT11Extract.exe imagen.dsk -o carpeta/" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "Para convertir ImageDisk: imd2raw.exe imagen.imd imagen.dsk" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
     
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
@@ -82,9 +93,11 @@ jobs:
         if [ "${{ matrix.arch }}" = "arm64" ]; then
           pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch arm64 rt11extract_gui.py
           pyinstaller --onefile --name "RT11Extract" --target-arch arm64 rt11extract
+          pyinstaller --onefile --name "imd2raw" --target-arch arm64 imd2raw.py
         else
           pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch x86_64 rt11extract_gui.py
           pyinstaller --onefile --name "RT11Extract" --target-arch x86_64 rt11extract
+          pyinstaller --onefile --name "imd2raw" --target-arch x86_64 imd2raw.py
         fi
     
     - name: Create macOS package
@@ -92,17 +105,22 @@ jobs:
         mkdir RT11Extractor-macOS-${{ matrix.arch }}
         cp dist/RT11ExtractGUI RT11Extractor-macOS-${{ matrix.arch }}/
         cp dist/RT11Extract RT11Extractor-macOS-${{ matrix.arch }}/
+        cp dist/imd2raw RT11Extractor-macOS-${{ matrix.arch }}/
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/RT11ExtractGUI
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract
+        chmod +x RT11Extractor-macOS-${{ matrix.arch }}/imd2raw
         cp README.md RT11Extractor-macOS-${{ matrix.arch }}/
         echo "RT-11 Extractor para macOS ${{ matrix.arch }}" > RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "Ejecutables incluidos:" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
-        echo "- RT11ExtractGUI (Interfaz gráfica)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
-        echo "- RT11Extract (Línea de comandos)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "- RT11ExtractGUI (Interfaz gráfica con soporte IMD)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "- RT11Extract (Extractor línea de comandos)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
-        echo "Para usar desde Terminal, otorgue permisos de ejecución si es necesario:" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
-        echo "chmod +x RT11Extract*" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "Para usar desde Terminal:" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "./RT11ExtractGUI (interfaz gráfica)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "./RT11Extract imagen.dsk -o carpeta/ (extractor)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "./imd2raw imagen.imd imagen.dsk (conversor)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
     
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v4
@@ -144,6 +162,7 @@ jobs:
         else
           pyinstaller --onefile --name "RT11ExtractGUI" rt11extract_gui.py
           pyinstaller --onefile --name "RT11Extract" rt11extract
+          pyinstaller --onefile --name "imd2raw" imd2raw.py
         fi
     
     - name: Create Linux package
@@ -152,18 +171,26 @@ jobs:
         mkdir RT11Extractor-Linux-${{ matrix.arch }}
         cp dist/RT11ExtractGUI RT11Extractor-Linux-${{ matrix.arch }}/
         cp dist/RT11Extract RT11Extractor-Linux-${{ matrix.arch }}/
+        cp dist/imd2raw RT11Extractor-Linux-${{ matrix.arch }}/
         chmod +x RT11Extractor-Linux-${{ matrix.arch }}/RT11ExtractGUI
         chmod +x RT11Extractor-Linux-${{ matrix.arch }}/RT11Extract
+        chmod +x RT11Extractor-Linux-${{ matrix.arch }}/imd2raw
         cp README.md RT11Extractor-Linux-${{ matrix.arch }}/
         echo "RT-11 Extractor para Linux ${{ matrix.arch }}" > RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "Ejecutables incluidos:" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
-        echo "- RT11ExtractGUI (Interfaz gráfica)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
-        echo "- RT11Extract (Línea de comandos)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- RT11ExtractGUI (Interfaz gráfica con soporte IMD)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- RT11Extract (Extractor línea de comandos)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "Uso:" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "./RT11ExtractGUI (interfaz gráfica)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "./RT11Extract imagen.dsk -o carpeta/ (extractor)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "./imd2raw imagen.imd imagen.dsk (conversor)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "Requisitos:" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "- Para la interfaz gráfica se requiere un entorno gráfico con soporte Tkinter" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
-        echo "- El ejecutable de línea de comandos funciona en cualquier terminal" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- Los ejecutables de línea de comandos funcionan en cualquier terminal" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
     
     - name: Upload Linux artifacts
       if: matrix.arch == 'x64'
@@ -244,6 +271,9 @@ jobs:
         echo "" >> BUILD_SUMMARY.md
         echo "### Todos los archivos RT11Extract:" >> BUILD_SUMMARY.md
         find . -name "RT11Extract*" -type f | sort >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Archivos imd2raw:" >> BUILD_SUMMARY.md
+        find . -name "imd2raw*" -type f | sort >> BUILD_SUMMARY.md
         
         cat BUILD_SUMMARY.md
     
