@@ -53,7 +53,7 @@ jobs:
         echo "Para usar desde línea de comandos, ejecute RT11Extract-Win${{ matrix.arch }}.exe" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
     
     - name: Upload Windows artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: RT11Extractor-Windows-${{ matrix.arch }}
         path: RT11Extractor-Windows-${{ matrix.arch }}/
@@ -117,7 +117,7 @@ jobs:
         echo "chmod +x RT11Extract*" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
     
     - name: Upload macOS artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: RT11Extractor-macOS-${{ matrix.arch }}
         path: RT11Extractor-macOS-${{ matrix.arch }}/
@@ -179,7 +179,7 @@ jobs:
     
     - name: Upload Linux artifacts
       if: matrix.arch == 'x64'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: RT11Extractor-Linux-${{ matrix.arch }}
         path: RT11Extractor-Linux-${{ matrix.arch }}/
@@ -191,7 +191,9 @@ jobs:
     
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
+      with:
+        path: .
     
     - name: Create release packages
       run: |
@@ -221,7 +223,9 @@ jobs:
     
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
+      with:
+        path: .
       continue-on-error: true
     
     - name: List all built executables
@@ -245,7 +249,7 @@ jobs:
         cat BUILD_SUMMARY.md
     
     - name: Upload build summary
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: BUILD_SUMMARY
         path: BUILD_SUMMARY.md
