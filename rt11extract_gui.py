@@ -15,6 +15,15 @@ import uuid
 from datetime import datetime
 import webbrowser
 
+# Windows-specific imports for hiding console
+if sys.platform == "win32":
+    # Constants for Windows subprocess creation flags
+    CREATE_NO_WINDOW = 0x08000000
+    DETACHED_PROCESS = 0x00000008
+else:
+    CREATE_NO_WINDOW = 0
+    DETACHED_PROCESS = 0
+
 # Global variables
 import sys
 
@@ -184,6 +193,20 @@ class RT11ExtractGUI:
         # Bind double-click on treeview
         self.files_tree.bind('<Double-1>', self.on_file_double_click)
         
+    def _get_subprocess_kwargs(self):
+        """Get subprocess kwargs that hide console window on Windows"""
+        kwargs = {
+            'capture_output': True,
+            'text': True,
+            'cwd': script_dir
+        }
+        
+        # On Windows, hide the console window
+        if sys.platform == "win32":
+            kwargs['creationflags'] = CREATE_NO_WINDOW
+        
+        return kwargs
+    
     def check_rt11extract(self):
         """Check if rt11extract is available"""
         if not rt11extract_path.exists():
@@ -258,12 +281,7 @@ class RT11ExtractGUI:
                 cmd_list = [sys.executable, str(rt11extract_path), self.current_file, '-l']
             self.log(f"Running: {' '.join(cmd_list)}")
             
-            list_result = subprocess.run(
-                cmd_list,
-                capture_output=True,
-                text=True,
-                cwd=script_dir
-            )
+            list_result = subprocess.run(cmd_list, **self._get_subprocess_kwargs())
             
             # Then run rt11extract to actually extract files for verification
             scan_dir = self.temp_dir / 'scan_output'
@@ -277,12 +295,7 @@ class RT11ExtractGUI:
                 cmd = [sys.executable, str(rt11extract_path), self.current_file, '-o', str(scan_dir), '-v']
             self.log(f"Running: {' '.join(cmd)}")
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=script_dir
-            )
+            result = subprocess.run(cmd, **self._get_subprocess_kwargs())
             
             if result.stdout:
                 self.log("STDOUT:")
@@ -443,12 +456,7 @@ class RT11ExtractGUI:
                 cmd = [sys.executable, str(rt11extract_path), self.current_file, '-o', str(self.output_dir), '-v']
             self.log(f"Running: {' '.join(cmd)}")
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                cwd=script_dir
-            )
+            result = subprocess.run(cmd, **self._get_subprocess_kwargs())
             
             if result.stdout:
                 self.log("STDOUT:")
@@ -565,9 +573,9 @@ class RT11ExtractGUI:
                 if sys.platform == "win32":
                     os.startfile(self.output_dir)
                 elif sys.platform == "darwin":  # macOS
-                    subprocess.run(["open", str(self.output_dir)])
+                    subprocess.run(["open", str(self.output_dir)], **self._get_subprocess_kwargs())
                 else:  # Linux and others
-                    subprocess.run(["xdg-open", str(self.output_dir)])
+                    subprocess.run(["xdg-open", str(self.output_dir)], **self._get_subprocess_kwargs())
             except Exception as e:
                 self.log(f"Error opening folder: {str(e)}")
                 messagebox.showerror("Error", f"Failed to open folder:\n{str(e)}")
