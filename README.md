@@ -22,6 +22,8 @@ python3 rt11extract_gui.py
 ```
 *Supports both DSK and IMD files with automatic conversion*
 
+![Desktop GUI](screenshots/desktopgui.png)
+
 ### Option 2: Command Line Extraction
 ```bash
 ./rt11extract disk_image.dsk -l          # List files
@@ -38,6 +40,8 @@ python3 rt11extract_gui.py
 python3 rt11extract_simple.py
 ```
 Then open http://localhost:8000 in your browser.
+
+![Web Interface](screenshots/webgui.png)
 
 ## 📱 **Download Pre-built Executables**
 
