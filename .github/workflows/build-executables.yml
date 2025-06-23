@@ -125,8 +125,10 @@ jobs:
         mkdir RT11Extractor-macOS-${{ matrix.arch }}
         # Copy the .app bundle
         cp -r "dist/RT11Extract.app" RT11Extractor-macOS-${{ matrix.arch }}/
-        # Copy CLI tools
+        # Copy CLI tools to both locations for compatibility
         cp dist/rt11extract_cli RT11Extractor-macOS-${{ matrix.arch }}/
+        # IMPORTANT: Also copy CLI inside the .app bundle so GUI can find it
+        cp dist/rt11extract_cli "RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract.app/Contents/MacOS/rt11extract_cli"
         cp dist/imd2raw RT11Extractor-macOS-${{ matrix.arch }}/
         # Copy FUSE driver if built successfully
         [ -f "dist/rt11_fuse" ] && cp dist/rt11_fuse RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse executable not available"
