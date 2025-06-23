@@ -888,12 +888,12 @@ Digital Equipment Corporation (DEC) computers."""
                 "After installation, restart this application.")
             return False
         
-        # Check if rt11_winfsp.bat script exists
-        winfsp_script = script_dir / "rt11_winfsp.bat"
+        # Check if rt11_mount.bat script exists
+        winfsp_script = script_dir / "rt11_mount.bat"
         if not winfsp_script.exists():
             messagebox.showerror("WinFsp Driver Not Found",
-                f"WinFsp driver script not found: {winfsp_script}\n\n" +
-                "Please ensure rt11_winfsp.bat is in the same directory.")
+                f"WinFsp mount script not found: {winfsp_script}\n\n" +
+                "Please ensure rt11_mount.bat is in the same directory.")
             return False
         
         return True
@@ -933,7 +933,7 @@ Digital Equipment Corporation (DEC) computers."""
         
         # Determine which FUSE script to use based on platform
         if sys.platform == "win32":
-            fuse_script = script_dir / "rt11_winfsp.bat"
+            fuse_script = script_dir / "rt11_mount.bat"
         else:
             fuse_script = script_dir / "rt11_fuse.sh"
         if not fuse_script.exists():
