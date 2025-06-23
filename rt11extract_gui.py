@@ -1259,10 +1259,16 @@ Digital Equipment Corporation (DEC) computers."""
         self.fuse_mounted = False
     
     def _check_and_unmount_if_needed(self, action_name="proceed"):
-        """Check if FUSE is mounted and ask user if they want to unmount"""
+        """Check if FUSE/WinFsp is mounted and ask user if they want to unmount"""
         if hasattr(self, 'fuse_mounted') and self.fuse_mounted and self.fuse_mount_point:
+            # Choose appropriate dialog title based on platform
+            if sys.platform == "win32":
+                dialog_title = "WinFsp Filesystem Mounted"
+            else:
+                dialog_title = "FUSE Filesystem Mounted"
+                
             response = messagebox.askyesno(
-                "FUSE Filesystem Mounted",
+                dialog_title,
                 f"A filesystem is currently mounted at:\n{self.fuse_mount_point}\n\n" +
                 f"Do you want to unmount it and {action_name}?"
             )
@@ -1275,10 +1281,23 @@ Digital Equipment Corporation (DEC) computers."""
     
     def on_closing(self):
         """Handle application closing"""
-        # Check if FUSE filesystem is mounted
+        # Check if FUSE/WinFsp filesystem is mounted
         if hasattr(self, 'fuse_mounted') and self.fuse_mounted and self.fuse_mount_point:
+            # Choose appropriate dialog title and instructions based on platform
+            if sys.platform == "win32":
+                dialog_title = "WinFsp Filesystem Mounted"
+                unmount_instructions = f"You can eject it from File Explorer or using:\n  net use {self.fuse_mount_point} /delete"
+            else:
+                dialog_title = "FUSE Filesystem Mounted"
+                if sys.platform == "darwin":
+                    unmount_instructions = f"umount {self.fuse_mount_point}"
+                elif sys.platform.startswith('linux'):
+                    unmount_instructions = f"fusermount -u {self.fuse_mount_point}"
+                else:
+                    unmount_instructions = "Check your system documentation for unmount commands"
+            
             response = messagebox.askyesnocancel(
-                "FUSE Filesystem Mounted",
+                dialog_title,
                 f"A filesystem is currently mounted at:\n{self.fuse_mount_point}\n\n" +
                 "Do you want to keep it mounted after closing the application?\n\n" +
                 "• Yes: Keep mounted and close application\n" +
@@ -1293,10 +1312,7 @@ Digital Equipment Corporation (DEC) computers."""
                 self.log("Filesystem unmounted before closing.")
             else:  # Yes - keep mounted and close
                 self.log("Leaving filesystem mounted. You can unmount it manually with:")
-                if sys.platform == "darwin":
-                    self.log(f"  umount {self.fuse_mount_point}")
-                elif sys.platform.startswith('linux'):
-                    self.log(f"  fusermount -u {self.fuse_mount_point}")
+                self.log(f"  {unmount_instructions}")
                 
                 # Detach the process so it continues running
                 if self.fuse_process:
