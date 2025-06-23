@@ -1,0 +1,2 @@
+# RT-11 Extractor Web Interface Dependencies
+# No external dependencies - uses only Python standard library

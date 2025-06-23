@@ -1226,26 +1226,27 @@ def main():
     # Start cleanup thread
     threading.Thread(target=cleanup_old_operations, daemon=True).start()
     
-    PORT = 8000
+    # Get port from environment (for hosting platforms) or default
+    PORT = int(os.environ.get('PORT', 8000))
+    HOST = os.environ.get('HOST', '0.0.0.0')  # Listen on all interfaces for hosting
     
-    # Find an available port
-    for port in range(8000, 8100):
-        try:
-            with socketserver.TCPServer(("", port), RT11ExtractHandler) as httpd:
-                PORT = port
-                break
-        except OSError:
-            continue
-    
-    print("🚀 Starting RT-11 Extract Simple GUI...")
-    print(f"📱 Open your browser and go to: http://localhost:{PORT}")
+    print("🚀 Starting RT-11 Extract Web Interface...")
+    print(f"📱 Server running on: http://{HOST}:{PORT}")
+    if HOST == '0.0.0.0':
+        print(f"📱 Local access: http://localhost:{PORT}")
     print("🛑 Press Ctrl+C to stop the server")
     
     try:
-        with socketserver.TCPServer(("", PORT), RT11ExtractHandler) as httpd:
+        with socketserver.TCPServer((HOST, PORT), RT11ExtractHandler) as httpd:
             httpd.serve_forever()
     except KeyboardInterrupt:
         print("\n🛑 Server stopped")
+    except OSError as e:
+        if 'Address already in use' in str(e):
+            print(f"❌ Port {PORT} is already in use")
+            print("Try setting a different PORT environment variable")
+        else:
+            raise
 
 if __name__ == '__main__':
     main()
