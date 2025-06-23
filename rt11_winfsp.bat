@@ -8,12 +8,19 @@ set SCRIPT_DIR=%~dp0
 set WINFSP_EXE=%SCRIPT_DIR%rt11_winfsp.exe
 set WINFSP_SCRIPT=%SCRIPT_DIR%rt11_winfsp.py
 
+REM Debug: Show what we're looking for
+echo DEBUG: Looking for executable at: %WINFSP_EXE%
+echo DEBUG: Current directory: %CD%
+echo DEBUG: Script directory: %SCRIPT_DIR%
+
 REM Try standalone executable first (preferred for distribution)
 if exist "%WINFSP_EXE%" (
-    echo Running standalone WinFsp driver: %WINFSP_EXE%
+    echo SUCCESS: Found standalone WinFsp driver: %WINFSP_EXE%
     echo Arguments: %*
     "%WINFSP_EXE%" %*
     goto :end
+) else (
+    echo WARNING: Standalone executable not found at: %WINFSP_EXE%
 )
 
 REM Fallback to Python script (for development)
