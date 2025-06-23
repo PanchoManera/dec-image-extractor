@@ -942,26 +942,34 @@ Digital Equipment Corporation (DEC) computers."""
                 "Please ensure rt11_fuse.sh is in the same directory.")
             return
         
-        # Create mount point (clean up first if needed)
-        mount_dir = script_dir / "rt11_mounted"
-        try:
-            # Clean up any existing mount first
-            if mount_dir.exists():
-                # Try to unmount if it's mounted
-                if sys.platform == "darwin":
-                    subprocess.run(["umount", str(mount_dir)], 
-                                 capture_output=True, check=False)
-                elif sys.platform.startswith('linux'):
-                    subprocess.run(["fusermount", "-u", str(mount_dir)], 
-                                 capture_output=True, check=False)
+        # Create mount point - different approach for Windows vs Unix
+        if sys.platform == "win32":
+            # Windows: Find available drive letter
+            mount_dir = self._find_available_drive_letter()
+            if not mount_dir:
+                messagebox.showerror("Error", "No available drive letters found. Please free up a drive letter and try again.")
+                return
+        else:
+            # Unix: Create directory mount point
+            mount_dir = script_dir / "rt11_mounted"
+            try:
+                # Clean up any existing mount first
+                if mount_dir.exists():
+                    # Try to unmount if it's mounted
+                    if sys.platform == "darwin":
+                        subprocess.run(["umount", str(mount_dir)], 
+                                     capture_output=True, check=False)
+                    elif sys.platform.startswith('linux'):
+                        subprocess.run(["fusermount", "-u", str(mount_dir)], 
+                                     capture_output=True, check=False)
+                    
+                    # Remove and recreate directory
+                    shutil.rmtree(mount_dir, ignore_errors=True)
                 
-                # Remove and recreate directory
-                shutil.rmtree(mount_dir, ignore_errors=True)
-            
-            mount_dir.mkdir(exist_ok=True)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to create mount directory:\n{e}")
-            return
+                mount_dir.mkdir(exist_ok=True)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to create mount directory:\n{e}")
+                return
         
         # Use converted DSK file if available, otherwise use original
         image_file = self.converted_dsk_file if self.converted_dsk_file else self.current_file
@@ -1180,6 +1188,40 @@ Digital Equipment Corporation (DEC) computers."""
             self.fuse_mount_point = None
             self.fuse_process = None
             self.fuse_mounted = False
+    
+    def _find_available_drive_letter(self):
+        """Find an available drive letter on Windows"""
+        import string
+        
+        # Check for available drive letters (starting from Z: and going backwards)
+        for letter in reversed(string.ascii_uppercase):
+            drive = f"{letter}:"
+            # Skip common system drives
+            if letter in ['A', 'B', 'C']:
+                continue
+                
+            # Check if drive is available
+            try:
+                if not os.path.exists(drive + "\\"):
+                    self.log(f"Found available drive letter: {drive}")
+                    return drive
+            except OSError:
+                # Drive letter is available if we get an OSError
+                self.log(f"Found available drive letter: {drive}")
+                return drive
+        
+        # If no drive letter found, try some common ones
+        for letter in ['Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R']:
+            drive = f"{letter}:"
+            try:
+                if not os.path.exists(drive + "\\"):
+                    self.log(f"Using drive letter: {drive}")
+                    return drive
+            except OSError:
+                self.log(f"Using drive letter: {drive}")
+                return drive
+        
+        return None  # No available drive letter found
     
     def _reset_mount_button(self):
         """Reset mount button to initial state"""
