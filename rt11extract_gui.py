@@ -995,7 +995,12 @@ Digital Equipment Corporation (DEC) computers."""
             self.log(f"DEBUG: Mount directory: {mount_dir}")
             self.log(f"DEBUG: Script exists: {fuse_script.exists()}")
             self.log(f"DEBUG: Image exists: {os.path.exists(image_file)}")
-            self.log(f"DEBUG: Mount dir exists: {mount_dir.exists()}")
+            # Fix: Handle both Path objects and strings for mount_dir
+            if isinstance(mount_dir, Path):
+                self.log(f"DEBUG: Mount dir exists: {mount_dir.exists()}")
+            else:
+                # For Windows drive letters, just check if it's a valid format
+                self.log(f"DEBUG: Mount dir (drive letter): {mount_dir}")
             self.log(f"DEBUG: Working directory: {script_dir}")
             
             # Start FUSE mount
@@ -1061,10 +1066,30 @@ Digital Equipment Corporation (DEC) computers."""
     
     def _check_mount_success(self):
         """Check if FUSE mount was successful and open file manager"""
-        if self.fuse_mount_point and self.fuse_mount_point.exists():
+        # Handle both Path objects (Unix) and strings (Windows drive letters)
+        mount_point_exists = False
+        if self.fuse_mount_point:
+            if isinstance(self.fuse_mount_point, Path):
+                mount_point_exists = self.fuse_mount_point.exists()
+            else:
+                # For Windows drive letters, check if accessible
+                try:
+                    mount_point_exists = os.path.exists(self.fuse_mount_point + "\\")
+                except:
+                    mount_point_exists = False
+        
+        if mount_point_exists:
             try:
                 # Check if mount point has files (indicates successful mount)
-                files = list(self.fuse_mount_point.iterdir())
+                if isinstance(self.fuse_mount_point, Path):
+                    files = list(self.fuse_mount_point.iterdir())
+                else:
+                    # For Windows drive letters, list files in root
+                    try:
+                        files = os.listdir(self.fuse_mount_point + "\\")
+                    except OSError:
+                        files = []
+                
                 if files:
                     self.log(f"Filesystem mounted successfully! Found {len(files)} files.")
                     self.fuse_mounted = True
