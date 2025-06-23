@@ -44,6 +44,10 @@ jobs:
     - name: Build IMD converter
       run: |
         pyinstaller --onefile --name "imd2raw" imd2raw.py
+        
+    - name: Build WinFsp driver
+      run: |
+        pyinstaller --onefile --name "rt11_winfsp" --hidden-import=refuse --hidden-import=fuse rt11_winfsp.py
     
     - name: Create Windows package
       run: |
@@ -51,7 +55,7 @@ jobs:
         copy dist\RT11ExtractGUI.exe RT11Extractor-Windows-${{ matrix.arch }}\
         copy dist\RT11Extract.exe RT11Extractor-Windows-${{ matrix.arch }}\
         copy dist\imd2raw.exe RT11Extractor-Windows-${{ matrix.arch }}\
-        copy rt11_winfsp.py RT11Extractor-Windows-${{ matrix.arch }}\
+        copy dist\rt11_winfsp.exe RT11Extractor-Windows-${{ matrix.arch }}\
         copy rt11_winfsp.bat RT11Extractor-Windows-${{ matrix.arch }}\
         copy setup_winfsp.bat RT11Extractor-Windows-${{ matrix.arch }}\
         copy README.md RT11Extractor-Windows-${{ matrix.arch }}\
@@ -61,6 +65,7 @@ jobs:
         echo "- RT11ExtractGUI.exe (Interfaz gráfica con soporte IMD y WinFsp)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "- RT11Extract.exe (Extractor línea de comandos)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "- imd2raw.exe (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "- rt11_winfsp.exe (Driver WinFsp standalone)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "- setup_winfsp.bat (Configuración de WinFsp)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "Para usar la interfaz gráfica, ejecute RT11ExtractGUI.exe" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
@@ -111,6 +116,8 @@ jobs:
           fi
           pyinstaller --onefile --name "RT11Extract" --target-arch arm64 rt11extract
           pyinstaller --onefile --name "imd2raw" --target-arch arm64 imd2raw.py
+          # Try to build FUSE driver (optional)
+          pyinstaller --onefile --name "rt11_fuse" --target-arch arm64 rt11_fuse_complete.py || echo "FUSE driver build failed for arm64"
         else
           if [ -f "icon.png" ]; then
             pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch x86_64 rt11extract_gui.py
@@ -119,6 +126,8 @@ jobs:
           fi
           pyinstaller --onefile --name "RT11Extract" --target-arch x86_64 rt11extract
           pyinstaller --onefile --name "imd2raw" --target-arch x86_64 imd2raw.py
+          # Try to build FUSE driver (optional)
+          pyinstaller --onefile --name "rt11_fuse" --target-arch x86_64 rt11_fuse_complete.py || echo "FUSE driver build failed for x86_64"
         fi
     
     - name: Create macOS package
@@ -127,14 +136,21 @@ jobs:
         cp dist/RT11ExtractGUI RT11Extractor-macOS-${{ matrix.arch }}/
         cp dist/RT11Extract RT11Extractor-macOS-${{ matrix.arch }}/
         cp dist/imd2raw RT11Extractor-macOS-${{ matrix.arch }}/
+        # Copy FUSE driver if built successfully
+        [ -f "dist/rt11_fuse" ] && cp dist/rt11_fuse RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse executable not available"
         # Copy FUSE files if they exist
         [ -f "rt11_fuse.py" ] && cp rt11_fuse.py RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse.py not found"
         [ -f "rt11_fuse.sh" ] && cp rt11_fuse.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse.sh not found"
         [ -f "rt11_fuse_complete.py" ] && cp rt11_fuse_complete.py RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse_complete.py not found"
+        [ -f "rt11_fuse_wrapper.sh" ] && cp rt11_fuse_wrapper.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse_wrapper.sh not found"
         [ -f "setup_fuse.sh" ] && cp setup_fuse.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "setup_fuse.sh not found"
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/RT11ExtractGUI
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/imd2raw
+        # Make FUSE executables and scripts executable
+        [ -f "RT11Extractor-macOS-${{ matrix.arch }}/rt11_fuse" ] && chmod +x RT11Extractor-macOS-${{ matrix.arch }}/rt11_fuse
+        [ -f "RT11Extractor-macOS-${{ matrix.arch }}/rt11_fuse_wrapper.sh" ] && chmod +x RT11Extractor-macOS-${{ matrix.arch }}/rt11_fuse_wrapper.sh
+        [ -f "RT11Extractor-macOS-${{ matrix.arch }}/setup_fuse.sh" ] && chmod +x RT11Extractor-macOS-${{ matrix.arch }}/setup_fuse.sh
         cp README.md RT11Extractor-macOS-${{ matrix.arch }}/
         echo "RT-11 Extractor para macOS ${{ matrix.arch }}" > RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
@@ -201,6 +217,8 @@ jobs:
           fi
           pyinstaller --onefile --name "RT11Extract" rt11extract
           pyinstaller --onefile --name "imd2raw" imd2raw.py
+          # Try to build FUSE driver (optional)
+          pyinstaller --onefile --name "rt11_fuse" rt11_fuse_complete.py || echo "FUSE driver build failed for Linux"
         fi
     
     - name: Create Linux package
@@ -210,14 +228,21 @@ jobs:
         cp dist/RT11ExtractGUI RT11Extractor-Linux-${{ matrix.arch }}/
         cp dist/RT11Extract RT11Extractor-Linux-${{ matrix.arch }}/
         cp dist/imd2raw RT11Extractor-Linux-${{ matrix.arch }}/
+        # Copy FUSE driver if built successfully
+        [ -f "dist/rt11_fuse" ] && cp dist/rt11_fuse RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse executable not available"
         # Copy FUSE files if they exist
         [ -f "rt11_fuse.py" ] && cp rt11_fuse.py RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse.py not found"
         [ -f "rt11_fuse.sh" ] && cp rt11_fuse.sh RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse.sh not found"
         [ -f "rt11_fuse_complete.py" ] && cp rt11_fuse_complete.py RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse_complete.py not found"
+        [ -f "rt11_fuse_wrapper.sh" ] && cp rt11_fuse_wrapper.sh RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse_wrapper.sh not found"
         [ -f "setup_fuse.sh" ] && cp setup_fuse.sh RT11Extractor-Linux-${{ matrix.arch }}/ || echo "setup_fuse.sh not found"
         chmod +x RT11Extractor-Linux-${{ matrix.arch }}/RT11ExtractGUI
         chmod +x RT11Extractor-Linux-${{ matrix.arch }}/RT11Extract
         chmod +x RT11Extractor-Linux-${{ matrix.arch }}/imd2raw
+        # Make FUSE executables and scripts executable
+        [ -f "RT11Extractor-Linux-${{ matrix.arch }}/rt11_fuse" ] && chmod +x RT11Extractor-Linux-${{ matrix.arch }}/rt11_fuse
+        [ -f "RT11Extractor-Linux-${{ matrix.arch }}/rt11_fuse_wrapper.sh" ] && chmod +x RT11Extractor-Linux-${{ matrix.arch }}/rt11_fuse_wrapper.sh
+        [ -f "RT11Extractor-Linux-${{ matrix.arch }}/setup_fuse.sh" ] && chmod +x RT11Extractor-Linux-${{ matrix.arch }}/setup_fuse.sh
         cp README.md RT11Extractor-Linux-${{ matrix.arch }}/
         echo "RT-11 Extractor para Linux ${{ matrix.arch }}" > RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
