@@ -1067,20 +1067,35 @@ Digital Equipment Corporation (DEC) computers."""
         """Handle FUSE mount failure"""
         error_msg = "Failed to mount filesystem."
         
-        if self.fuse_process:
+        if self.fuse_process and self.fuse_process.poll() is None:
+            # Process is still running, try to get stderr
             try:
-                stdout, stderr = self.fuse_process.communicate(timeout=1)
+                self.fuse_process.terminate()
+                stdout, stderr = self.fuse_process.communicate(timeout=2)
                 if stderr:
                     error_msg += f"\n\nError output:\n{stderr}"
-            except subprocess.TimeoutExpired:
+            except (subprocess.TimeoutExpired, OSError, AttributeError):
+                # Force kill if terminate doesn't work or other errors
+                try:
+                    self.fuse_process.kill()
+                except (OSError, AttributeError):
+                    pass
+        elif self.fuse_process and hasattr(self.fuse_process, 'stderr') and self.fuse_process.stderr:
+            # Process already ended, try to read stderr if available
+            try:
+                stderr = self.fuse_process.stderr.read()
+                if stderr:
+                    error_msg += f"\n\nError output:\n{stderr}"
+            except (OSError, AttributeError):
                 pass
         
         self.log(error_msg)
         messagebox.showerror("Mount Failed", error_msg)
         
-        # Reset button (only if it exists - not on Windows)
-        if hasattr(self, 'mount_btn') and self.mount_btn is not None:
-            self.mount_btn.config(text="Mount as Filesystem", command=self.mount_fuse)
+        # Reset button
+        self._reset_mount_button()
+        
+        # Clean up
         self.fuse_mount_point = None
         self.fuse_process = None
     
