@@ -39,15 +39,22 @@ if sys.platform != "win32":
     sys.exit(1)
 
 # Import WinFsp-compatible FUSE library
+WINFSP_AVAILABLE = False
 try:
+    # Ensure sys is available for refuse library
+    import sys
     from refuse.high import FUSE, FuseOSError, Operations, LoggingMixIn
     WINFSP_AVAILABLE = True
-except ImportError:
+    print("Using refuse library for WinFsp")
+except ImportError as e:
+    print(f"refuse library not available: {e}")
     try:
         # Fallback to regular fusepy (might work with WinFsp)
         from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
         WINFSP_AVAILABLE = True
-    except ImportError:
+        print("Using fusepy library as fallback")
+    except ImportError as e2:
+        print(f"fusepy library not available: {e2}")
         WINFSP_AVAILABLE = False
 
 class RT11FileEntry:
