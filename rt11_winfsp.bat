@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 REM RT-11 WinFsp Driver Wrapper for Windows
 REM ========================================
 REM This script runs the standalone WinFsp driver executable
@@ -19,10 +20,10 @@ if exist "%WINFSP_EXE%" (
     echo Arguments: %*
     echo DEBUG: About to execute: "%WINFSP_EXE%" %*
     "%WINFSP_EXE%" %* 2>&1
-    set EXEC_RESULT=%ERRORLEVEL%
-    echo DEBUG: Executable returned with exit code: %EXEC_RESULT%
-    if %EXEC_RESULT% neq 0 (
-        echo ERROR: WinFsp driver failed with exit code %EXEC_RESULT%
+    set EXEC_RESULT=!ERRORLEVEL!
+    echo DEBUG: Executable returned with exit code: !EXEC_RESULT!
+    if !EXEC_RESULT! neq 0 (
+        echo ERROR: WinFsp driver failed with exit code !EXEC_RESULT!
     )
     goto :end
 ) else (
