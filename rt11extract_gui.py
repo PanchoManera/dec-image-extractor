@@ -981,18 +981,34 @@ Digital Equipment Corporation (DEC) computers."""
         try:
             self.log(f"Mounting {os.path.basename(image_file)} as filesystem...")
             
+            # Debug: Log all parameters
+            self.log(f"DEBUG: Script path: {fuse_script}")
+            self.log(f"DEBUG: Image file: {image_file}")
+            self.log(f"DEBUG: Mount directory: {mount_dir}")
+            self.log(f"DEBUG: Script exists: {fuse_script.exists()}")
+            self.log(f"DEBUG: Image exists: {os.path.exists(image_file)}")
+            self.log(f"DEBUG: Mount dir exists: {mount_dir.exists()}")
+            self.log(f"DEBUG: Working directory: {script_dir}")
+            
             # Start FUSE mount
             cmd = [str(fuse_script), image_file, str(mount_dir)]
             self.log(f"Running: {' '.join(cmd)}")
             
             # Start the FUSE process (runs in foreground but in our thread)
-            self.fuse_process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=script_dir
-            )
+            kwargs = {
+                'stdout': subprocess.PIPE,
+                'stderr': subprocess.PIPE,
+                'text': True,
+                'cwd': script_dir
+            }
+            
+            # On Windows, hide console window
+            if sys.platform == "win32":
+                kwargs['creationflags'] = CREATE_NO_WINDOW
+            
+            self.log(f"DEBUG: subprocess.Popen kwargs: {kwargs}")
+            
+            self.fuse_process = subprocess.Popen(cmd, **kwargs)
             
             self.fuse_mount_point = mount_dir
             self.fuse_mounted = False  # Track if mount was successful
