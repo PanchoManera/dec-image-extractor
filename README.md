@@ -11,8 +11,13 @@ RT-11 was a real-time operating system developed by Digital Equipment Corporatio
 ### Core Tools
 - **`rt11extract`** - Command-line RT-11 extraction engine
 - **`imd2raw.py`** - ImageDisk (IMD) to DSK/RAW converter
-- **`rt11extract_gui.py`** - Desktop GUI application with IMD support
+- **`rt11extract_gui.py`** - Desktop GUI application with IMD support and filesystem mounting
 - **`rt11extract_simple.py`** - Web-based interface
+
+### Filesystem Mounting
+- **`rt11_fuse.sh`** - FUSE driver for macOS/Linux filesystem mounting
+- **`rt11_mount.bat`** - WinFsp driver for Windows filesystem mounting
+- **Standalone executables** - Platform-specific compiled drivers included in releases
 
 ## 🚀 **Quick Start**
 
@@ -43,6 +48,18 @@ Then open http://localhost:8000 in your browser.
 
 ![Web Interface](screenshots/webgui.png)
 
+### Option 5: Filesystem Mounting (GUI)
+1. **Open Desktop GUI**: `python3 rt11extract_gui.py`
+2. **Select and scan** an RT-11 disk image
+3. **Click "Mount as Filesystem"** button
+4. **Browse files directly** in your file manager:
+   - **Windows**: Mounted as drive letter (e.g., `X:`)
+   - **macOS/Linux**: Mounted in `rt11_mounted/` folder
+5. **Files appear as regular files** - copy, view, edit directly
+6. **Click "Unmount Filesystem"** when done
+
+*Requires FUSE (macOS/Linux) or WinFsp (Windows) - see System Requirements*
+
 ## 📱 **Download Pre-built Executables**
 
 Pre-built executables are automatically generated for all platforms and available in the [Releases](../../releases) section.
@@ -67,6 +84,16 @@ Pre-built executables are automatically generated for all platforms and availabl
 ✅ **No external dependencies** (pure Python)
 ✅ **Original file dates preservation**
 ✅ **Error recovery and validation**
+
+### 🗂️ **Filesystem Mounting**
+✅ **Mount RT-11 images as local filesystem** (browse files directly in file manager)
+✅ **FUSE support** for macOS and Linux
+✅ **WinFsp support** for Windows
+✅ **Automatic platform detection** (chooses FUSE or WinFsp automatically)
+✅ **Smart mount management** (prevents conflicts, handles cleanup)
+✅ **Integrated GUI controls** (mount/unmount with one click)
+✅ **Drive letter assignment** (Windows - automatically finds available drive)
+✅ **Graceful shutdown handling** (option to keep filesystem mounted on exit)
 
 ## 📋 **Supported Formats**
 
@@ -96,6 +123,15 @@ Pre-built executables are automatically generated for all platforms and availabl
 - **Windows 7+** (Windows executables)
 - **macOS 10.14+** (macOS executables)
 - **Linux** with glibc 2.17+ (Linux executables)
+
+### For Filesystem Mounting (Optional)
+- **macOS**: [macFUSE](https://osxfuse.github.io/) - Required for mounting RT-11 images as filesystems
+- **Linux**: FUSE utilities - Install via package manager:
+  - Ubuntu/Debian: `sudo apt install fuse libfuse-dev`
+  - RHEL/CentOS: `sudo yum install fuse fuse-devel`
+  - Arch Linux: `sudo pacman -S fuse2`
+- **Windows**: [WinFsp](https://winfsp.dev/) - Required for mounting RT-11 images as drive letters
+  - Download from: https://github.com/winfsp/winfsp/releases
 
 ## 🛠️ **Development**
 
