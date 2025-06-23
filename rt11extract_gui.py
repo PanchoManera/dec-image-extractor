@@ -997,12 +997,14 @@ Digital Equipment Corporation (DEC) computers."""
             # Start the FUSE process (runs in foreground but in our thread)
             kwargs = {
                 'stdout': subprocess.PIPE,
-                'stderr': subprocess.PIPE,
+                'stderr': subprocess.STDOUT,  # Redirect stderr to stdout for better capture
                 'text': True,
-                'cwd': script_dir
+                'cwd': script_dir,
+                'bufsize': 1,  # Line buffered
+                'universal_newlines': True
             }
             
-            # On Windows, hide console window
+            # On Windows, hide console window but allow output capture
             if sys.platform == "win32":
                 kwargs['creationflags'] = CREATE_NO_WINDOW
             
@@ -1019,8 +1021,16 @@ Digital Equipment Corporation (DEC) computers."""
             # Check mount success after a delay
             self.root.after(0, self._check_mount_success)
             
-            # Now wait for the FUSE process to finish (it will block here)
-            stdout, stderr = self.fuse_process.communicate()
+            # Now wait for the FUSE process to finish with timeout
+            try:
+                stdout, stderr = self.fuse_process.communicate(timeout=30)
+                self.log(f"DEBUG: Process completed with returncode: {self.fuse_process.returncode}")
+                if stdout:
+                    self.log(f"DEBUG: Process output: {stdout}")
+            except subprocess.TimeoutExpired:
+                self.log("DEBUG: Process timeout after 30 seconds - process may be running in background")
+                # Don't kill the process if it's a successful mount that's running in background
+                stdout, stderr = "", ""
             
             # Process ended - filesystem was unmounted
             self.log("FUSE filesystem unmounted")
