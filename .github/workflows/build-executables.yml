@@ -96,22 +96,25 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller pillow
+        # Install FUSE dependencies for macOS (optional, may fail on some systems)
+        pip install fusepy || echo "fusepy not available on this system"
+        pip install refuse || echo "refuse not available on this system"
     
     - name: Build executable with PyInstaller
       run: |
         if [ "${{ matrix.arch }}" = "arm64" ]; then
           if [ -f "icon.png" ]; then
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --target-arch arm64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse --target-arch arm64 rt11extract_gui.py || pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --target-arch arm64 rt11extract_gui.py
           else
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch arm64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse --target-arch arm64 rt11extract_gui.py || pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch arm64 rt11extract_gui.py
           fi
           pyinstaller --onefile --name "RT11Extract" --target-arch arm64 rt11extract
           pyinstaller --onefile --name "imd2raw" --target-arch arm64 imd2raw.py
         else
           if [ -f "icon.png" ]; then
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --target-arch x86_64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse --target-arch x86_64 rt11extract_gui.py || pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --target-arch x86_64 rt11extract_gui.py
           else
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch x86_64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse --target-arch x86_64 rt11extract_gui.py || pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch x86_64 rt11extract_gui.py
           fi
           pyinstaller --onefile --name "RT11Extract" --target-arch x86_64 rt11extract
           pyinstaller --onefile --name "imd2raw" --target-arch x86_64 imd2raw.py
@@ -123,6 +126,11 @@ jobs:
         cp dist/RT11ExtractGUI RT11Extractor-macOS-${{ matrix.arch }}/
         cp dist/RT11Extract RT11Extractor-macOS-${{ matrix.arch }}/
         cp dist/imd2raw RT11Extractor-macOS-${{ matrix.arch }}/
+        # Copy FUSE files if they exist
+        [ -f "rt11_fuse.py" ] && cp rt11_fuse.py RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse.py not found"
+        [ -f "rt11_fuse.sh" ] && cp rt11_fuse.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse.sh not found"
+        [ -f "rt11_fuse_complete.py" ] && cp rt11_fuse_complete.py RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse_complete.py not found"
+        [ -f "setup_fuse.sh" ] && cp setup_fuse.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "setup_fuse.sh not found"
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/RT11ExtractGUI
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/imd2raw
@@ -130,7 +138,7 @@ jobs:
         echo "RT-11 Extractor para macOS ${{ matrix.arch }}" > RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "Ejecutables incluidos:" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
-        echo "- RT11ExtractGUI (Interfaz gráfica con soporte IMD)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "- RT11ExtractGUI (Interfaz gráfica con soporte IMD y macFUSE)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "- RT11Extract (Extractor línea de comandos)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
@@ -138,6 +146,11 @@ jobs:
         echo "./RT11ExtractGUI (interfaz gráfica)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "./RT11Extract imagen.dsk -o carpeta/ (extractor)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
         echo "./imd2raw imagen.imd imagen.dsk (conversor)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "Para montaje de sistema de archivos (macFUSE):" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "1. Instale macFUSE desde https://osxfuse.github.io/" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "2. Ejecute ./setup_fuse.sh para configurar" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "3. Use el botón 'Mount as Filesystem' en la GUI" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
     
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v4
@@ -162,12 +175,15 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y python3-tk
+        sudo apt-get install -y python3-tk libfuse-dev
     
     - name: Install Python dependencies
       run: |
         python -m pip install --upgrade pip
         pip install pyinstaller pillow
+        # Install FUSE dependencies for Linux (optional, may fail on some systems)
+        pip install fusepy || echo "fusepy not available on this system"
+        pip install refuse || echo "refuse not available on this system"
     
     - name: Build executable with PyInstaller
       run: |
@@ -178,9 +194,9 @@ jobs:
           exit 0
         else
           if [ -f "icon.png" ]; then
-            pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." rt11extract_gui.py
+            pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse rt11extract_gui.py || pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." rt11extract_gui.py
           else
-            pyinstaller --onefile --name "RT11ExtractGUI" rt11extract_gui.py
+            pyinstaller --onefile --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse rt11extract_gui.py || pyinstaller --onefile --name "RT11ExtractGUI" rt11extract_gui.py
           fi
           pyinstaller --onefile --name "RT11Extract" rt11extract
           pyinstaller --onefile --name "imd2raw" imd2raw.py
@@ -193,6 +209,11 @@ jobs:
         cp dist/RT11ExtractGUI RT11Extractor-Linux-${{ matrix.arch }}/
         cp dist/RT11Extract RT11Extractor-Linux-${{ matrix.arch }}/
         cp dist/imd2raw RT11Extractor-Linux-${{ matrix.arch }}/
+        # Copy FUSE files if they exist
+        [ -f "rt11_fuse.py" ] && cp rt11_fuse.py RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse.py not found"
+        [ -f "rt11_fuse.sh" ] && cp rt11_fuse.sh RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse.sh not found"
+        [ -f "rt11_fuse_complete.py" ] && cp rt11_fuse_complete.py RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse_complete.py not found"
+        [ -f "setup_fuse.sh" ] && cp setup_fuse.sh RT11Extractor-Linux-${{ matrix.arch }}/ || echo "setup_fuse.sh not found"
         chmod +x RT11Extractor-Linux-${{ matrix.arch }}/RT11ExtractGUI
         chmod +x RT11Extractor-Linux-${{ matrix.arch }}/RT11Extract
         chmod +x RT11Extractor-Linux-${{ matrix.arch }}/imd2raw
@@ -200,7 +221,7 @@ jobs:
         echo "RT-11 Extractor para Linux ${{ matrix.arch }}" > RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "Ejecutables incluidos:" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
-        echo "- RT11ExtractGUI (Interfaz gráfica con soporte IMD)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- RT11ExtractGUI (Interfaz gráfica con soporte IMD y FUSE)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "- RT11Extract (Extractor línea de comandos)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
@@ -212,6 +233,11 @@ jobs:
         echo "Requisitos:" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "- Para la interfaz gráfica se requiere un entorno gráfico con soporte Tkinter" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
         echo "- Los ejecutables de línea de comandos funcionan en cualquier terminal" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "Para montaje de sistema de archivos (FUSE):" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "1. Instale libfuse-dev: sudo apt-get install libfuse-dev" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "2. Ejecute ./setup_fuse.sh para configurar" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "3. Use el botón 'Mount as Filesystem' en la GUI" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
     
     - name: Upload Linux artifacts
       if: matrix.arch == 'x64'
