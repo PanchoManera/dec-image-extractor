@@ -7,53 +7,38 @@ echo RT-11 WinFsp Setup Script
 echo =========================
 echo.
 
-REM Get the directory where this script is located
-set SCRIPT_DIR=%~dp0
-set VENV_DIR=%SCRIPT_DIR%venv
-
-echo Setting up virtual environment...
-
 REM Check if Python is available
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo Error: Python is not installed or not in PATH
-    echo Please install Python from https://python.org/
-    pause
-    exit /b 1
-)
-
-REM Create virtual environment if it doesn't exist
-if not exist "%VENV_DIR%" (
-    echo Creating virtual environment...
-    python -m venv "%VENV_DIR%"
+    py --version >nul 2>&1
     if errorlevel 1 (
-        echo Error: Failed to create virtual environment
+        echo Error: Python is not installed or not in PATH
+        echo Please install Python from https://python.org/
         pause
         exit /b 1
+    ) else (
+        echo Found Python via 'py' command
+        set PYTHON_CMD=py
     )
 ) else (
-    echo Virtual environment already exists
+    echo Found Python via 'python' command
+    set PYTHON_CMD=python
 )
 
-REM Activate virtual environment
-echo Activating virtual environment...
-call "%VENV_DIR%\Scripts\activate.bat"
-
-REM Upgrade pip
-echo Upgrading pip...
-python -m pip install --upgrade pip
+echo Installing Python dependencies globally...
 
 REM Install required packages
 echo Installing refuse (WinFsp Python bindings)...
-pip install refuse
+%PYTHON_CMD% -m pip install refuse
 
 if errorlevel 1 (
     echo Error: Failed to install refuse
     echo.
     echo Trying fallback: fusepy
-    pip install fusepy
+    %PYTHON_CMD% -m pip install fusepy
     if errorlevel 1 (
         echo Error: Failed to install FUSE libraries
+        echo Try running as administrator
         pause
         exit /b 1
     )
@@ -87,9 +72,9 @@ if %WINFSP_FOUND%==1 (
 REM Test the installation
 echo.
 echo Testing installation...
-python -c "import refuse; print('✓ refuse module available')" 2>nul
+%PYTHON_CMD% -c "import refuse; print('✓ refuse module available')" 2>nul
 if errorlevel 1 (
-    python -c "import fuse; print('✓ fusepy module available as fallback')" 2>nul
+    %PYTHON_CMD% -c "import fuse; print('✓ fusepy module available as fallback')" 2>nul
     if errorlevel 1 (
         echo ✗ No FUSE modules available
         pause

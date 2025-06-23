@@ -83,18 +83,35 @@ class RT11ExtractorWrapper:
     
     def __init__(self, image_path: str):
         self.image_path = Path(image_path)
-        # Look for RT11Extract.exe in the same directory
-        self.rt11extract_path = Path(__file__).parent / "RT11Extract.exe"
-        if not self.rt11extract_path.exists():
-            self.rt11extract_path = Path(__file__).parent / "rt11extract.exe"
-        if not self.rt11extract_path.exists():
-            self.rt11extract_path = Path(__file__).parent / "rt11extract"
+        # Look for RT11Extract.exe in various locations
+        script_dir = Path(__file__).parent
+        cwd = Path.cwd()
+        
+        search_paths = [
+            script_dir / "RT11Extract.exe",
+            script_dir / "rt11extract.exe", 
+            script_dir / "rt11extract",
+            cwd / "RT11Extract.exe",
+            cwd / "rt11extract.exe",
+            cwd / "rt11extract",
+            Path(sys.executable).parent / "RT11Extract.exe",  # When running from packaged exe
+            Path(sys.executable).parent / "rt11extract.exe",
+            Path(sys.executable).parent / "rt11extract"
+        ]
+        
+        self.rt11extract_path = None
+        for path in search_paths:
+            if path.exists():
+                self.rt11extract_path = path
+                break
         
         self.logger = logging.getLogger('RT11-Extractor')
         self._file_data_cache = {}
         
-        if not self.rt11extract_path.exists():
-            raise Exception(f"RT11Extract not found. Expected at {self.rt11extract_path}")
+        if not self.rt11extract_path:
+            error_msg = f"RT11Extract not found. Searched in: {[str(p) for p in search_paths]}"
+            print(error_msg)
+            raise Exception(error_msg)
         
     def list_files(self) -> List[RT11FileEntry]:
         """Get list of files by extracting to temporary directory"""
