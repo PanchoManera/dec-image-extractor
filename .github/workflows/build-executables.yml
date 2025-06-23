@@ -87,7 +87,11 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        arch: [x64, arm64]
+        include:
+          - arch: arm64
+            target_arch: arm64
+          - arch: x64
+            target_arch: universal2
     
     steps:
     - uses: actions/checkout@v4
@@ -107,7 +111,7 @@ jobs:
     
     - name: Build executable with PyInstaller
       run: |
-        # Build with fallback strategy - first try with FUSE, then without
+        # Build with native architecture to avoid cross-compilation issues
         if [ "${{ matrix.arch }}" = "arm64" ]; then
           if [ -f "icon.png" ]; then
             pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch arm64 rt11extract_gui.py
@@ -119,15 +123,16 @@ jobs:
           # Try to build FUSE driver (optional)
           pyinstaller --onefile --name "rt11_fuse" --target-arch arm64 rt11_fuse_complete.py || echo "FUSE driver build failed for arm64"
         else
+          # For x64, build universal2 binaries that work on both Intel and Apple Silicon
           if [ -f "icon.png" ]; then
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch x86_64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch universal2 rt11extract_gui.py
           else
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch x86_64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch universal2 rt11extract_gui.py
           fi
-          pyinstaller --onefile --name "RT11Extract" --target-arch x86_64 rt11extract
-          pyinstaller --onefile --name "imd2raw" --target-arch x86_64 imd2raw.py
+          pyinstaller --onefile --name "RT11Extract" --target-arch universal2 rt11extract
+          pyinstaller --onefile --name "imd2raw" --target-arch universal2 imd2raw.py
           # Try to build FUSE driver (optional)
-          pyinstaller --onefile --name "rt11_fuse" --target-arch x86_64 rt11_fuse_complete.py || echo "FUSE driver build failed for x86_64"
+          pyinstaller --onefile --name "rt11_fuse" --target-arch universal2 rt11_fuse_complete.py || echo "FUSE driver build failed for universal2"
         fi
     
     - name: Create macOS package
