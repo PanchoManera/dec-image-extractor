@@ -17,7 +17,13 @@ REM Try standalone executable first (preferred for distribution)
 if exist "%WINFSP_EXE%" (
     echo SUCCESS: Found standalone WinFsp driver: %WINFSP_EXE%
     echo Arguments: %*
-    "%WINFSP_EXE%" %*
+    echo DEBUG: About to execute: "%WINFSP_EXE%" %*
+    "%WINFSP_EXE%" %* 2>&1
+    set EXEC_RESULT=%ERRORLEVEL%
+    echo DEBUG: Executable returned with exit code: %EXEC_RESULT%
+    if %EXEC_RESULT% neq 0 (
+        echo ERROR: WinFsp driver failed with exit code %EXEC_RESULT%
+    )
     goto :end
 ) else (
     echo WARNING: Standalone executable not found at: %WINFSP_EXE%
