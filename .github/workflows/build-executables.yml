@@ -102,19 +102,20 @@ jobs:
     
     - name: Build executable with PyInstaller
       run: |
+        # Build with fallback strategy - first try with FUSE, then without
         if [ "${{ matrix.arch }}" = "arm64" ]; then
           if [ -f "icon.png" ]; then
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse --target-arch arm64 rt11extract_gui.py || pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --target-arch arm64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch arm64 rt11extract_gui.py
           else
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse --target-arch arm64 rt11extract_gui.py || pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch arm64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch arm64 rt11extract_gui.py
           fi
           pyinstaller --onefile --name "RT11Extract" --target-arch arm64 rt11extract
           pyinstaller --onefile --name "imd2raw" --target-arch arm64 imd2raw.py
         else
           if [ -f "icon.png" ]; then
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse --target-arch x86_64 rt11extract_gui.py || pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --target-arch x86_64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch x86_64 rt11extract_gui.py
           else
-            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse --target-arch x86_64 rt11extract_gui.py || pyinstaller --onefile --windowed --name "RT11ExtractGUI" --target-arch x86_64 rt11extract_gui.py
+            pyinstaller --onefile --windowed --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --target-arch x86_64 rt11extract_gui.py
           fi
           pyinstaller --onefile --name "RT11Extract" --target-arch x86_64 rt11extract
           pyinstaller --onefile --name "imd2raw" --target-arch x86_64 imd2raw.py
