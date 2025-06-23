@@ -36,12 +36,24 @@ if getattr(sys, 'frozen', False):
     if sys.platform.startswith('win'):
         rt11extract_path = script_dir / "RT11Extract.exe"
     elif sys.platform == 'darwin':  # macOS
-        # In macOS bundle, the GUI is inside .app/Contents/MacOS/, but CLI is in parent directory
-        # So we need to go up to the directory that contains the .app
+        # In macOS bundle, the GUI is inside .app/Contents/MacOS/, but CLI might be in different locations
         if str(script_dir).endswith('.app/Contents/MacOS'):
-            # We're inside a .app bundle, CLI is in the parent directory of the .app
-            bundle_parent = script_dir.parent.parent.parent  # Go up from MacOS -> Contents -> RT11Extract.app -> parent
-            rt11extract_path = bundle_parent / "rt11extract_cli"
+            # We're inside a .app bundle, try multiple locations for CLI
+            possible_cli_paths = [
+                script_dir / "rt11extract_cli",  # Inside the .app bundle (preferred)
+                script_dir.parent.parent.parent / "rt11extract_cli",  # In parent directory of .app
+            ]
+            
+            # Find the first existing CLI executable
+            rt11extract_path = None
+            for path in possible_cli_paths:
+                if path.exists():
+                    rt11extract_path = path
+                    break
+            
+            # If not found, default to the preferred location (inside bundle)
+            if rt11extract_path is None:
+                rt11extract_path = script_dir / "rt11extract_cli"
         else:
             # Not in .app bundle, look in same directory
             rt11extract_path = script_dir / "rt11extract_cli"
