@@ -692,7 +692,29 @@ class RT11ExtractHandler(http.server.SimpleHTTPRequestHandler):
                         for file_path in operation['output_dir'].rglob('*'):
                             if file_path.is_file():
                                 arcname = file_path.relative_to(operation['output_dir'])
-                                zipf.write(file_path, arcname)
+                                # Create ZipInfo manually to handle old timestamps
+                                try:
+                                    zipf.write(file_path, arcname)
+                                except ValueError as e:
+                                    if 'timestamps before 1980' in str(e):
+                                        # Handle files with timestamps before 1980
+                                        import time
+                                        from datetime import datetime
+                                        
+                                        # Read file content
+                                        with open(file_path, 'rb') as f:
+                                            file_data = f.read()
+                                        
+                                        # Create ZipInfo with a safe timestamp (1980-01-01)
+                                        zip_info = zipfile.ZipInfo(str(arcname))
+                                        zip_info.date_time = (1980, 1, 1, 0, 0, 0)
+                                        zip_info.file_size = len(file_data)
+                                        zip_info.compress_type = zipfile.ZIP_DEFLATED
+                                        
+                                        # Write file with manual ZipInfo
+                                        zipf.writestr(zip_info, file_data)
+                                    else:
+                                        raise
                     
                     # Send file
                     self.send_response(200)
