@@ -1,0 +1,500 @@
+
+
+			RT-11 V05.03 RELEASE NOTES ADDENDA
+			===================================
+
+
+The following lists new general features.  It also lists restrictions, general
+information, software corrections,  and  documentation  changes  and additions
+finalized after the printing of the RT-11 V5.3 Release Notes.
+
+
+				GENERAL FEATURES
+				----------------
+
+Version 5.3 provides support for the following new features and devices:
+
+
+	o New unsupported native transfer utility (TRANSFER)
+	o Bad block replacement support for MSCP (DU) devices
+	o Multiple port booting for MSCP (DU) devices
+	o Support for SPFUN 376 and 377 (absolute write/read with MSCP 
+	  bad block replacement) for DU devices
+	o Bad block support for the BUP utility
+	o New system macros: .CKXX, .DREST, .DRPTR, and .DRSPF
+	o New system subroutines: CALL$F, IGTDUS, JREAD, and JWRITE
+	o New command file to backup and build bootable magtapes (MTB.COM)
+	o New beginners tutorial manual (RT-11 For Beginners)
+	o Support for the new PDP-11/83 Q-BUS processor
+	o Support for approx. 532 thousand (8 x 65K) blocks on the RA81 disk
+	o Support for the LVP-16 graphics plotter/printer
+	o Support for the new RD31 hard disk as a 10M byte system 
+	  and data device
+	o Support for one additional RD5x hard disk device on Professional
+	  series processors using the new EXPANDER BOX
+
+
+
+				GENERAL RESTRICTIONS
+				--------------------
+
+    o Smooth screen scrolling is not supported for the Professional 380. Do
+      not issue the command SETUP SMOOTH if using a Professional 380.
+
+    o Set an LA210 printer to AUTO mode before issuing it SETUP commands.
+
+    o Support for DU multiple port booting requires the V5.3 DU handler
+      running under a V5.3 monitor.
+
+    o .READx, .WRITx, IREADx, and IWRITx  requests and subroutines perform I/O
+      contiguously  from  the specified buffer starting address. If the speci-
+      fied  buffer  spans  a discontiguously mapped page boundary, I/O is per-
+      formed outside of the mapped buffer, and no error message is returned.
+
+    o Unit numbers other than 0 are not supported for TT devices. I/O requests
+      to TTn, where n is other than 0, return a hard error.
+
+    o Under  the  XM  monitor, the DU handler (DUX) cannot be renamed and then
+      used  concurrently  with  the  renamed handler.  That is, you cannot for
+      example rename DUX to DAX and use DUX and DAX at the same time.
+
+								Page 2
+
+		GENERAL INFORMATION AND SOFTWARE CORRECTIONS
+		--------------------------------------------
+
+Information   on   unsupported  utilities,  previously  located  in  the  file
+UNSUP.TXT, is now located in Appendix C of the RT-11 System Utilities Manual.
+
+The term  'unsupported'  as used by RT-11 in reference to a distributed module
+means  that  RT-11  does  not guarantee that future releases will be backwards
+compatible for that module, and  does not guarantee that module will appear in
+future  releases  of  RT-11.  However, SPRs (Software Performance Reports) are
+answered for any module distributed with RT-11.
+
+
+1. MONITORS
+
+   BSTRAP
+
+     o	The  bootstrap  now  performs a read/write operation on all locations,
+	including those below the 28K word boundary,  during the memory sizing
+	operation.  That corrects parity for all memory locations. Previously,
+	after initial startup  (cold boot),  a monitor built for memory parity
+	support  running  a program that read locations not initialized by the
+	bootstrap  could  cause  a  memory  parity error trap.  That no longer
+	occurs.
+
+   KMON
+
+     o	When KMON  processed  an indirect command file containing multiple in-
+	direct  command  files,  it saved the command file depth status before
+	determining  if  all  nested indirect command files existed. If one of
+	the nested  indirect  command  files  did not exist, and error was set
+	NONE, KMON would report the nonexistent file and then process the next
+	file twice.  Now,  KMON  correctly saves the command file depth status
+	while  reporting  the  nonexistent file and then properly restores it.
+	The following indirect command file is correctly processed only once.
+
+
+2. UTILITIES 
+
+   BUP
+
+     o	When performing file backup operations, the V5.2 BUP incorrectly wrote
+	a 1280. (decimal) block output file regardless of the input file size.
+	That  was  true  only  for  file  backup  operations.  Device   backup
+	operations performed as documented.
+
+	When  backing  up a file smaller than 1280. blocks, BUP continued past
+	the  end  of  the  input  file, generating hard error messages once it
+	reached  the  end  of  that  file.  BUP wrote a 1280. output file that
+	contained the input file.
+
+	When  backing  up a file larger than 1280. blocks, BUP wrote the input
+	file  to  an output file for only 1280. blocks. BUP then truncated the
+	rest  of  the  input file. Any data contained in the input file beyond
+	1280. blocks was lost, and no error message was sent to the user.
+
+	BUP now correctly backs up files and devices as documented.
+
+								Page 3
+   CONFIG
+
+     o	Two options are added to the unsupported utility CONFIG.
+
+ 	  Option		Purpose
+
+	/D[:yes][:no]	Causes  CONFIG  to return an error message in addition
+			to  setting bits in USERRB.  You can assume success if
+			no error message is returned. Using /D:yes once causes
+			CONFIG  to  continue  to return error messages without
+			repeating the /D option. /D:no turns off /D:yes.
+
+	/F		Lets  you  use  CONFIG comparison options (/V, /M, and
+			/B)  with files. Using /F with a file locks the speci-
+			fied file to CONFIG. That lets you subsequently access
+			the file using only the /F option  (without specifying
+			the file again), and increases the access speed.
+
+
+    DUP
+
+     o	Warning   and   error   messages   displayed  during  COPY/DEVICE  and
+	COPY/DEVICE/NOQUERY   operations  have  been  changed  for  V5.3.  The
+	COPY/DEVICE  command  now prompts with:  'Output device is larger. Are
+	you sure?',   or,  'Output device  is smaller. Are you sure?',    when
+	appropriate.  The COPY/DEVICE/NOQUERY command now displays the warning
+	message  '?DUP-W-Output device is larger than input device',  or   the
+	error  message  '?DUP-E-Output device  is  smaller than input device',
+	when appropriate.
+
+    IND
+
+     o	The .TESTDEVICE directive incorrectly reported the status of the SPOOL
+	device  handler  SP  as  OFL (off-line).  It now correctly reports the
+	status as UNK (unknown).
+	
+    KED/KEX
+
+     o	KED  (or KEX)  now  sets bits in the USERRB byte (byte 53) to indicate
+	whether  you  use the EXIT or QUIT command to leave the editor. If you
+	exit KED,  it  sets  bit 0 in USERRB for success.  If you quit KED, it
+	sets bit 1 in USERRB for warning. Therefore, if you have set the error
+	severity level to WARNING (SET ERROR WARNING) and are running KED from
+	within  an  indirect  file,  quitting  KED will cause an exit from the
+	indirect file.
+	  
+    LINK
+
+     o	RT-11 V5.3  removes  the  restriction  stating that the total combined
+	size of all virtual overlay segments created by the LINK /V option can
+	not  exceed  96K words.  Now, the total combined size is the amount of
+	available memory.
+
+								Page 4
+    ODT
+
+     o	The distributed debugger ODT.OBJ requires that the operating system be
+	loaded in memory.  You can  modify ODT so that it does not require the
+	operating  sytem  be  loaded  in  memory.  That could  be useful,  for
+	example,  in  debugging the bootstrap.  Use the following procedure to
+	create  a  debugger  called ODTHWD.OBJ that functions independently of
+	the operating system:
+
+	Use KED to create the following patch program. Name it ODTPAT.MAC.  In
+	the  program,  substitute  for  the  symbol ..GVAL, the value for that
+	symbol located in CUSTOM.TXT.
+
+		.TITLE	ODT
+		.PSECT	$ODT$
+		BASE=..GVAL
+		.=.+BASE
+		BR	.+34
+		.END
+
+	Assemble the created patch program:
+
+		.R MACRO<RET>
+		*ODTPAT=ODTPAT<RET>
+		*<CTRL/C>
+
+	Create  the   operating  system  independent  debugger  ODTHWD.OBJ  by
+	modifying  ODT.OBJ.  The  procedure  does  not destroy the distributed
+	ODT.OBJ,  but  modifies  a copy of it.  Use the utility PAT.SAV in the
+	following manner:
+
+		.R PAT<RET>
+		*ODTHWD=ODT,ODTPAT<RET>
+		*<CTRL/C>
+
+	Explicitly  specify  ODTHWD  in the LINK/DEBUG command. If you do not
+	specify ODTHWD, RT-11 by default links the distributed ODT.
+
+		.LINK/DEBUG:ODTHWD program<RET>
+
+    PIP
+
+     o	PIP incorrectly treated printers (LP) as sequential access devices for
+	copy operations from the terminal (TT). Therefore, a copy command from
+	TT  to  LP produced an invalid device error. Now, PIP correctly copies
+	from the terminal to the printer.
+
+     o	When  the system device (SY) and the data device (DK) were assigned to
+	the  same  device,  a  copy  operation from SY to DK would incorrectly
+	perform  the  copy  operation twice.  Now, PIP renames the file to the
+	output filename rather than copying it.
+
+    SRCCOM
+
+     o	The  /SLP[:filespec]  option  for  the DIFFERENCES command is not cor-
+	rectly  documented.  You  must  specify an output filespec;  it is not
+	optional. The correct syntax is DIFFERENCES/SLP:filespec.
+
+								Page 5
+    TRANSFER (unsupported)
+
+     o	TRANSF.TSK  (TRANSFER  for  RSX  operating  systems) requires both the
+	RMSRES and DAPRES libraries be installed on the host PDP-11 processor.
+
+    VTCOM
+
+     o	VTCOM returns  the  following new error message if the system clock is
+	not  running  when VTCOM begins execution: ?VTCOM-F-Clock not running.
+	As VTCOM does not continuously check the system clock while operating,
+	that message is returned only during startup.
+
+     o	Transfer speed enhancements were made to  VTCOM for a previous release
+	of RT-11.  VTCOM  sends  data  at  the interface interrupt speed.  The
+	transfer  speed  can  be  too  fast  for  the host terminal service to
+	process. A symptom is a beeping terminal. To compensate, slow down the
+	baud  rate  or  let  VTCOM  adjust the transfer rate using retries and
+	reduced packet size.
+
+
+3. Device Handlers
+
+    DU
+
+     o	DU  now  has  a  status  word  containing  information  about the last
+	operation performed by the handler.  The status word is called STATU$,
+	and for V5.3  is located at offset 16 from the base of DU.  The offset
+	of  STATU$  may change with  each release of RT-11.  The low 5 bits of
+	STATU$ contain the status information. All other bits are reserved.
+	
+	Bit Set		Octal Value	Meaning when set
+
+	00000		   00		Success
+	00001		   01		Invalid command
+	00010		   02		Command aborted
+	00011		   03		Unit off-line
+	00100		   04		Unit available
+	00101		   05		Media format error
+	00110		   06		Write protected media
+	00111		   07		Compare error
+	01000		   10		Data error
+	01001		   11		Host buffer access error
+	01010		   12		Controller error
+	01011		   13		Drive error
+
+	Use  ODT/VDT  or the  E  keyboard  command  to examine the contents of
+	STATU$. You will need to perform customization patch 2.7.32 located in
+	the RT-11 Installation Guide to use the E command. Use the SHOW MEMORY
+	command display to find the base of the  DU handler and add the offset
+	to that base. 
+
+								Page 6
+
+     o	The  low-memory  size  of the DU handler when run under the XM monitor
+	has  been  reduced  from  approximately 550 words to approximately 114
+	words.  Data  and  code that was previously resident in low memory has
+	now been placed in a global region  in extended memory. Using the same
+	technique, bad  block  replacement  support adds only approximately 16
+	words to the low-memory portion of the DU handler.  Approximately 1900
+	words  required  for  bad  block replacement support are placed in ex-
+	tended memory.
+
+    DW
+
+     o	Previously,  the DW handler applied the wrong mapping of logical block
+	numbers  (LBN) to physical block numbers (PBN) on RD5x hard disks. The
+	correct mapping is used in RT-11 V5.3.
+
+	The  DW  mapping error caused file-structured operations (.READ/.WRITE
+	requests) to map to different locations than non-file-structured oper-
+	ations  (.SPFUN  requests).  File-structured  and  non-file-structured
+	operations  are  corrected  for RT-11 V5.3; however, see the ISPFN and
+	.SPFUN sections in this file for changes to the blk argument.
+
+	Because DW mapping is changed for RT-11 V5.3, all RD5x hard disks that
+	were used by a previous version of RT-11 must be reconfigured. That is
+	done  automatically  by the Automatic Installation Procedure. Any RD5x
+	hard disk  not in your processor during Automatic Installation must be
+	initialized using  RT-11  V5.3  before use. Copy any files you want to
+	preserve to RX50 diskettes using the version of RT-11 that wrote those
+	files  to  the  RD5x.  Then  initialize the RD5x hard disk using RT-11
+	V5.3.
+	
+	Reconfiguration of two RD52 hard disks changes their available size in
+	blocks. The following table shows the changes:
+
+	Manufacturer		Was			After Reconfiguration
+	------------		---			---------------------
+
+	CDC RD52  is unchanged
+	Atasi RD52		55679. blocks		65535. blocks
+	Quantum	RD52		65535. blocks		65407. blocks
+
+	The reduction of 128 (decimal) blocks in available size of the Quantum
+	RD52  is  caused  by  correction  of  an error in previous versions of
+	RT-11. An area reserved by the disk was incorrectly allocated for data
+	storage.
+
+     o	DW  uses  the new .DRPTR  macro  to reduce its memory-resident size by
+	moving  device  sizing  and initialization code to non-memory-resident
+	FETCH  and  LOAD  code. That  makes DW more than 150 words smaller (in
+	memory).
+
+     o	DW  uses  a new SET DW SLOT=n command to support the new EXPANDER BOX.
+	The  EXPANDER BOX lets you add one additional RD5x controller and hard
+	disk to a  Professional series processor configuration. Because the DW
+	handler supports only  a  single device connected to a single control-
+	ler,  you  must  rename  DW  and  use the SLOT=n option to support the
+	EXPANDER  BOX.  Use  the  SLOT=n  option  only  when you have added an
+	EXPANDER BOX, and only with the renamed DW handler.
+
+								Page 7
+
+	Use the  SLOT=n  option  to  identify the EXPANDER BOX RD5x controller
+	card  slot  in  the  Professional's back plane. The six card slots are
+	numbered  0  through  5, from front to back. The first RD5x controller
+	is  typically  in slot 0. The second RD5x controller typically goes in
+	slot 5.  Assuming  that,  issue  the following commands to support the
+	EXPANDER BOX:
+
+		. COPY SY:DW[X].SYS DV[X].SYS
+		. SET DV SLOT=5
+		. INSTALL DV
+
+	NOTE:	The  SLOT=n  option and DV handler as support for the EXPANDER
+		BOX is an interim solution.  A  simpler solution will probably
+		be  supplied  in  a future release.  Do not rely on the SLOT=n
+		option being present in future releases.
+
+     o	RT-11  supports  only  one drive with the DW handler.  Previously, you
+	could  specify  unit  (n)  numbers  0  and  1 in the SET DWn [NO]WRITE
+	command.  Now,  you  can  only  specify unit number 0. An omitted unit
+	number defaults to unit 0.
+
+    LD
+
+     o	Previously,  a  fetch  error  occurring  during an operation requiring
+	LD to fetch a handler  could corrupt LD's internal table. Now, a fetch
+	error  occurring under those circumstances correctly returns the error
+	message ?LD-F-Fetch error.
+
+    LP/LS
+
+     o	The  description  of the consequences of issuing a PRINT command to an
+	off line  printer  in  the V5.3 Release Notes is too severe.  In fact,
+	doing that  makes the system only appear hung. You need only place the
+	printer on line or enter CTRL/C twice to free the system.
+
+    RK
+
+     o	The  RK  handler now returns a hard error if a transfer would have ac-
+	cessed  memory beyond the limits addressable by the controller in use,
+	that is, 64K bytes on the Q-BUS and 256K bytes on the UNIBUS.
+
+
+    TT
+
+     o	A  CTRL/Z  within  data  being  read  from the TT device is treated as
+	end-of-file  (EOF)  by  the .READ request. At least two .READ requests
+	are  necessary  to  return  the  EOF  error (carry bit set and byte 52
+	containing  error code 0). The first .READ request transfers into your
+	buffer all data up to  (but not including) the CTRL/Z. The rest of the
+	buffer is padded with nulls. A second .READ request is required to get
+	the   EOF   error.   Subsequent  .READ  requests  can  return  further
+	characters.
+
+								Page 8
+    XC/XL
+
+     o	A CTRL/Z within data being read is treated as end-of-file (EOF) by the
+	.READ request. At least two .READ requests are necessary to return the
+	EOF error  (carry  bit  set  and byte 52 containing error code 0). The
+	first .READ request transfers into your buffer all data up to (but not
+	including) the CTRL/Z.  The rest of the buffer is padded with nulls. A
+	second  .READ  request  is  required  to get the EOF error. Subsequent
+	.READ requests can return further characters.
+
+
+
+4. Programmed Requests (SYSMAC)
+
+     o	All variable names of the form ...V* are reserved by DIGITAL.
+
+     o	All macro names of the form ...CM% are reserved by DIGITAL.
+
+    .ABTIO
+
+     o	The  .ABTIO request incorrectly aborted all of a job's outstanding I/O
+	operations;  that is,  it aborted all outstanding I/O on all channels.
+	Also,  all aborted I/O queue elements were lost. Now, .ABTIO correctly
+	aborts  a  job's  outstanding  I/O  operations  only  on the specified
+	channel.  The aborted I/O queue elements are correctly returned to the
+	list of available queue elements.
+
+	User-written internally-queued handlers  should have their abort entry
+	code  modified in the following manner. The abort entry code must con-
+	tinue  to  check that R4 equals the job number for that queue element.
+	In addition,  the  handler  should  abort a queue element only when R5
+	equals  zero  or  when  R5  points to the channel status word for that
+	queue element.
+
+    .DEVICE
+
+     o	The  address specified in the addr argument must reside in the low 28K
+	words of memory.
+
+    .SPFUN
+
+     o	For  DU,  .SPFUN  376  and 377 can return the following error code (in
+	addition to those also returned by DM):
+
+	140000		A  forced  error occurred. The device controller or DU
+			handler  has  discovered bad data on a good (replaced)
+			block.  (Bad  block  replacement  was performed but no
+			data was recovered.)
+
+     o	For  DW,  .SPFUN 376 and 377 now use logical block numbers rather than
+	physical  block numbers in the blk argument.  Therefore,  to address a
+	write or read to physical block zero, specify -1 for the blk argument.
+	That is  necessary because the physical block number of a DW device is
+	always one less than the logical block number.
+								
+								Page 9
+
+5. System Subroutines (SYSLIB)
+
+
+    GIWRIT
+
+     o	The  msglen  parameter  accepts  a  value equal to or greater than -1.
+	Specify the -1 value for msglen to reset GIDIS.
+
+    INTSET
+
+     o	The linkage  established  by  INTSET  between the processor and device
+	priorities  was  performed improperly.  That resulted in the processor
+	executing  the  interrupt at a processor priority level that was lower
+	than  the  device  priority  level.  Now,  the  processor executes the
+	interrupt when the processor and device priority levels are the same.
+
+    ISPFN
+
+     o	For  DU,  ISPFN  376  and  377 can return the following error code (in
+	addition to those also returned by DM):
+
+	140000		A  forced  error occurred. The device controller or DU
+			handler  has  discovered bad data on a good (replaced)
+			block.  (Bad  block  replacement  was performed but no
+			data was recovered.)
+
+     o	For  DW,  ISPFN  376 and 377 now use logical block numbers rather than
+	physical  block  numbers  in the blk argument. Therefore, to address a
+	write or read to physical block zero, specify -1 for the blk argument.
+	That  is necessary because the physical block number of a DW device is
+	always one less than the logical block number.
+
+    MTTINT
+
+     o	RT-11 rejected (would not answer) incoming calls to the shared console
+	that was SET to a remote DL line unless a program was running that had
+	attached to that DL line.  RT-11 now accepts  (answers) incoming calls
+	under those circumstances.
+
+
+----- End of V5NOTE.TXT
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         

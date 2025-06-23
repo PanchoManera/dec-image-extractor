@@ -60,17 +60,75 @@ class RT11ExtractGUI:
         self.output_dir = None
         self.is_extracting = False
         self.converted_dsk_file = None  # For IMD->DSK conversion
-        
-        # Set icon (DEC logo text as fallback)
-        try:
-            # You can add an icon file here if you have one
-            pass
-        except:
-            pass
+        self.fuse_mount_point = None  # FUSE mount point
+        self.fuse_process = None      # FUSE process
+        self.fuse_mounted = False     # Track if FUSE is successfully mounted
         
         self.setup_ui()
         self.setup_menu()
+        
+        # Set custom RT-11/DEC icon (after UI setup so log function is available)
+        self.set_application_icon()
+        
         self.check_rt11extract()
+    
+    def set_application_icon(self):
+        """Set custom application icon for main window and all dialogs"""
+        try:
+            # Try different icon formats based on platform
+            icon_paths = [
+                script_dir / "icon.png",       # Original icon
+                script_dir / "rt11_icon.ico",  # Windows ICO format (fallback)
+                script_dir / "rt11_icon.png",  # PNG format (fallback)
+                script_dir / "rt11_icon.icns"  # macOS ICNS format (fallback)
+            ]
+            
+            icon_set = False
+            self.icon_photo = None  # Store icon reference
+            
+            for icon_path in icon_paths:
+                if icon_path.exists():
+                    try:
+                        # Try to set the icon
+                        if sys.platform == "win32" and icon_path.suffix == '.ico':
+                            self.root.iconbitmap(str(icon_path))
+                            icon_set = True
+                            self.log(f"Set application icon: {icon_path.name}")
+                            break
+                        elif icon_path.suffix in ['.png', '.ico']:
+                            # For PNG/ICO, load with PIL if available
+                            try:
+                                try:
+                                    from PIL import Image, ImageTk
+                                    img = Image.open(icon_path)
+                                    # Resize to appropriate icon size for better display
+                                    img = img.resize((32, 32), Image.Resampling.LANCZOS)
+                                    self.icon_photo = ImageTk.PhotoImage(img)
+                                    # Set as default icon for all windows
+                                    self.root.iconphoto(True, self.icon_photo)
+                                    icon_set = True
+                                    self.log(f"Set application icon: {icon_path.name}")
+                                    break
+                                except ImportError:
+                                    # Fall back to tk.PhotoImage for PNG only
+                                    if icon_path.suffix == '.png':
+                                        self.icon_photo = tk.PhotoImage(file=str(icon_path))
+                                        self.root.iconphoto(True, self.icon_photo)
+                                        icon_set = True
+                                        self.log(f"Set application icon: {icon_path.name} (fallback)")
+                                        break
+                            except Exception as e:
+                                self.log(f"Could not load icon {icon_path.name}: {e}")
+                                continue
+                    except Exception as e:
+                        self.log(f"Could not set icon {icon_path.name}: {e}")
+                        continue
+            
+            if not icon_set:
+                self.log("Using default application icon (custom icon not found)")
+                
+        except Exception as e:
+            self.log(f"Error setting application icon: {e}")
         
     def setup_menu(self):
         """Setup menu bar"""
@@ -185,12 +243,17 @@ class RT11ExtractGUI:
                                               command=self.extract_selected_file, state="disabled")
         self.extract_selected_btn.grid(row=0, column=1, padx=(0, 5))
         
+        # FUSE Mount button (works on all platforms with proper drivers)
+        self.mount_btn = ttk.Button(buttons_frame, text="Mount as Filesystem", 
+                                   command=self.mount_fuse, state="disabled")
+        self.mount_btn.grid(row=0, column=2, padx=(0, 5))
+        
         self.open_folder_btn = ttk.Button(buttons_frame, text="Open Output Folder", 
                                          command=self.open_output_folder, state="disabled")
-        self.open_folder_btn.grid(row=0, column=2, padx=(0, 5))
+        self.open_folder_btn.grid(row=0, column=3, padx=(0, 5))
         
         self.clear_btn = ttk.Button(buttons_frame, text="Clear", command=self.clear_all)
-        self.clear_btn.grid(row=0, column=3, padx=(5, 0))
+        self.clear_btn.grid(row=0, column=4, padx=(5, 0))
         
         # Log section
         log_frame = ttk.LabelFrame(main_frame, text="Log", padding="10")
@@ -275,6 +338,10 @@ class RT11ExtractGUI:
         if not rt11extract_path.exists():
             messagebox.showerror("Error", "rt11extract not found.")
             return
+        
+        # Check if FUSE is mounted and ask user if they want to unmount
+        if not self._check_and_unmount_if_needed("scan this new image"):
+            return  # User cancelled
             
         # Disable buttons during scan
         self.scan_btn.config(state="disabled")
@@ -437,6 +504,10 @@ class RT11ExtractGUI:
             
         # Enable buttons
         self.extract_all_btn.config(state="normal")
+        
+        # Enable FUSE mount button if we have files (only on non-Windows)
+        if files and hasattr(self, 'mount_btn') and self.mount_btn is not None:
+            self.mount_btn.config(state="normal")
         
         # Enable extract selected button if there are files
         if files:
@@ -664,6 +735,10 @@ class RT11ExtractGUI:
             
     def clear_all(self):
         """Clear all data"""
+        # Check if FUSE is mounted and ask user if they want to unmount
+        if not self._check_and_unmount_if_needed("clear all data"):
+            return  # User cancelled
+        
         # Clear file selection
         self.file_var.set("")
         self.current_file = None
@@ -770,8 +845,355 @@ Digital Equipment Corporation (DEC) computers."""
         
         messagebox.showinfo("About RT-11 Extract GUI", about_text)
         
+    def check_fuse_availability(self):
+        """Check if FUSE is available on this system"""
+        # Check if FUSE system is available
+        if sys.platform == 'darwin':  # macOS
+            # Check for macFUSE (more lenient check)
+            return os.path.exists('/usr/local/lib/libfuse.dylib') or \
+                   os.path.exists('/usr/local/lib/libfuse.2.dylib') or \
+                   os.path.exists('/opt/homebrew/lib/libfuse.dylib')
+        elif sys.platform.startswith('linux'):  # Linux
+            # Check for FUSE utilities
+            try:
+                subprocess.run(['fusermount', '--version'], 
+                             capture_output=True, check=True)
+                return True
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                return False
+        else:
+            return False
+    
+    def check_winfsp_availability(self):
+        """Check if WinFsp is available on Windows"""
+        if sys.platform != "win32":
+            return False
+        
+        # Check if WinFsp is installed
+        winfsp_paths = [
+            "C:\\Program Files (x86)\\WinFsp\\bin\\winfsp-x64.dll",
+            "C:\\Program Files\\WinFsp\\bin\\winfsp-x64.dll",
+            "C:\\Program Files (x86)\\WinFsp\\bin\\winfsp-x86.dll"
+        ]
+        
+        winfsp_found = any(os.path.exists(path) for path in winfsp_paths)
+        
+        if not winfsp_found:
+            messagebox.showerror("WinFsp Not Installed",
+                "WinFsp is not installed on this system.\n\n" +
+                "WinFsp is required for filesystem mounting on Windows.\n\n" +
+                "Please download and install WinFsp from:\n" +
+                "  https://winfsp.dev/\n" +
+                "  https://github.com/winfsp/winfsp/releases\n\n" +
+                "After installation, restart this application.")
+            return False
+        
+        # Check if rt11_winfsp.bat script exists
+        winfsp_script = script_dir / "rt11_winfsp.bat"
+        if not winfsp_script.exists():
+            messagebox.showerror("WinFsp Driver Not Found",
+                f"WinFsp driver script not found: {winfsp_script}\n\n" +
+                "Please ensure rt11_winfsp.bat is in the same directory.")
+            return False
+        
+        return True
+    
+    def mount_fuse(self):
+        """Mount the RT-11 image as a filesystem using FUSE"""
+        if not self.current_file:
+            messagebox.showwarning("Warning", "Please select and scan a disk image first.")
+            return
+        
+        # Check platform support and available drivers
+        if sys.platform == "win32":
+            # Windows: Check for WinFsp
+            if not self.check_winfsp_availability():
+                return  # Error already shown
+        else:
+            # macOS/Linux: Check for FUSE
+            if not self.check_fuse_availability():
+                if sys.platform == "darwin":
+                    messagebox.showerror("macFUSE Not Installed", 
+                        "macFUSE is not installed on this system.\n\n" +
+                        "Please install macFUSE from:\n" +
+                        "https://osxfuse.github.io/\n\n" +
+                        "After installation, restart this application.")
+                elif sys.platform.startswith('linux'):
+                    messagebox.showerror("FUSE Not Installed", 
+                        "FUSE is not installed on this system.\n\n" +
+                        "Please install FUSE using:\n" +
+                        "Ubuntu/Debian: sudo apt install fuse libfuse-dev\n" +
+                        "RHEL/CentOS: sudo yum install fuse fuse-devel\n" +
+                        "Arch Linux: sudo pacman -S fuse2\n\n" +
+                        "After installation, restart this application.")
+                else:
+                    messagebox.showerror("FUSE Not Available", 
+                        "FUSE is not available on this platform.")
+                return
+        
+        # Determine which FUSE script to use based on platform
+        if sys.platform == "win32":
+            fuse_script = script_dir / "rt11_winfsp.bat"
+        else:
+            fuse_script = script_dir / "rt11_fuse.sh"
+        if not fuse_script.exists():
+            messagebox.showerror("FUSE Driver Not Found", 
+                f"FUSE driver script not found: {fuse_script}\n\n" +
+                "Please ensure rt11_fuse.sh is in the same directory.")
+            return
+        
+        # Create mount point (clean up first if needed)
+        mount_dir = script_dir / "rt11_mounted"
+        try:
+            # Clean up any existing mount first
+            if mount_dir.exists():
+                # Try to unmount if it's mounted
+                if sys.platform == "darwin":
+                    subprocess.run(["umount", str(mount_dir)], 
+                                 capture_output=True, check=False)
+                elif sys.platform.startswith('linux'):
+                    subprocess.run(["fusermount", "-u", str(mount_dir)], 
+                                 capture_output=True, check=False)
+                
+                # Remove and recreate directory
+                shutil.rmtree(mount_dir, ignore_errors=True)
+            
+            mount_dir.mkdir(exist_ok=True)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create mount directory:\n{e}")
+            return
+        
+        # Use converted DSK file if available, otherwise use original
+        image_file = self.converted_dsk_file if self.converted_dsk_file else self.current_file
+        
+        # Start FUSE mounting in background thread
+        self.log(f"Starting to mount {os.path.basename(image_file)} as filesystem...")
+        self.progress_var.set("Mounting filesystem...")
+        self.mount_btn.config(state="disabled")
+        
+        # Start mounting in background thread
+        threading.Thread(target=self._mount_fuse_thread, 
+                        args=(fuse_script, image_file, mount_dir), 
+                        daemon=True).start()
+    
+    def _mount_fuse_thread(self, fuse_script, image_file, mount_dir):
+        """Background thread for FUSE mounting"""
+        try:
+            self.log(f"Mounting {os.path.basename(image_file)} as filesystem...")
+            
+            # Start FUSE mount
+            cmd = [str(fuse_script), image_file, str(mount_dir)]
+            self.log(f"Running: {' '.join(cmd)}")
+            
+            # Start the FUSE process (runs in foreground but in our thread)
+            self.fuse_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=script_dir
+            )
+            
+            self.fuse_mount_point = mount_dir
+            self.fuse_mounted = False  # Track if mount was successful
+            
+            # Give it a moment to start mounting
+            time.sleep(2)
+            
+            # Check mount success after a delay
+            self.root.after(0, self._check_mount_success)
+            
+            # Now wait for the FUSE process to finish (it will block here)
+            stdout, stderr = self.fuse_process.communicate()
+            
+            # Process ended - filesystem was unmounted
+            self.log("FUSE filesystem unmounted")
+            self.root.after(0, lambda: self._reset_mount_button())
+            
+            # If there were errors, show them
+            if stderr and "destroyed" not in stderr.lower():
+                self.log(f"FUSE stderr: {stderr}")
+            
+        except Exception as e:
+            self.log(f"Error mounting filesystem: {e}")
+            self.root.after(0, lambda: messagebox.showerror("Mount Error", f"Failed to mount filesystem:\n{e}"))
+            self.root.after(0, lambda: self._reset_mount_button())
+        finally:
+            # Reset progress and clean up
+            self.root.after(0, lambda: self.progress_var.set("Ready"))
+            self.fuse_process = None
+            self.fuse_mount_point = None
+            self.fuse_mounted = False
+    
+    def _check_mount_success(self):
+        """Check if FUSE mount was successful and open file manager"""
+        if self.fuse_mount_point and self.fuse_mount_point.exists():
+            try:
+                # Check if mount point has files (indicates successful mount)
+                files = list(self.fuse_mount_point.iterdir())
+                if files:
+                    self.log(f"Filesystem mounted successfully! Found {len(files)} files.")
+                    self.fuse_mounted = True
+                    
+                    # Update button to show unmount option
+                    self.mount_btn.config(
+                        text="Unmount Filesystem", 
+                        command=self.unmount_fuse,
+                        state="normal"
+                    )
+                    
+                    # Open the mount point in file manager
+                    self._open_file_manager(self.fuse_mount_point)
+                    
+                    messagebox.showinfo("Mount Success", 
+                        f"RT-11 filesystem mounted successfully!\n\n" +
+                        f"Mount point: {self.fuse_mount_point}\n" +
+                        f"Files available: {len(files)}\n\n" +
+                        "The folder has been opened in your file manager.")
+                else:
+                    # Check if FUSE process is still running
+                    if self.fuse_process and self.fuse_process.poll() is None:
+                        self.log("Mount appears empty, checking again...")
+                        self.root.after(2000, self._check_mount_success)
+                    else:
+                        self._handle_mount_failure()
+            except Exception as e:
+                self.log(f"Error checking mount: {e}")
+                self._handle_mount_failure()
+        else:
+            self._handle_mount_failure()
+    
+    def _handle_mount_failure(self):
+        """Handle FUSE mount failure"""
+        error_msg = "Failed to mount filesystem."
+        
+        if self.fuse_process:
+            try:
+                stdout, stderr = self.fuse_process.communicate(timeout=1)
+                if stderr:
+                    error_msg += f"\n\nError output:\n{stderr}"
+            except subprocess.TimeoutExpired:
+                pass
+        
+        self.log(error_msg)
+        messagebox.showerror("Mount Failed", error_msg)
+        
+        # Reset button (only if it exists - not on Windows)
+        if hasattr(self, 'mount_btn') and self.mount_btn is not None:
+            self.mount_btn.config(text="Mount as Filesystem", command=self.mount_fuse)
+        self.fuse_mount_point = None
+        self.fuse_process = None
+    
+    def _open_file_manager(self, path):
+        """Open file manager at the specified path"""
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)
+            elif sys.platform == "darwin":  # macOS
+                subprocess.run(["open", str(path)])
+            else:  # Linux and others
+                subprocess.run(["xdg-open", str(path)])
+        except Exception as e:
+            self.log(f"Error opening file manager: {e}")
+    
+    def unmount_fuse(self):
+        """Unmount the FUSE filesystem"""
+        if not self.fuse_mount_point:
+            return
+        
+        try:
+            self.log("Unmounting filesystem...")
+            
+            # Terminate FUSE process
+            if self.fuse_process and self.fuse_process.poll() is None:
+                self.fuse_process.terminate()
+                try:
+                    self.fuse_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.fuse_process.kill()
+            
+            # On macOS, try unmounting with umount
+            if sys.platform == "darwin":
+                try:
+                    subprocess.run(["umount", str(self.fuse_mount_point)], 
+                                 check=True, capture_output=True)
+                except subprocess.CalledProcessError:
+                    pass  # Process termination may have already unmounted
+            
+            # On Linux, try fusermount
+            elif sys.platform.startswith('linux'):
+                try:
+                    subprocess.run(["fusermount", "-u", str(self.fuse_mount_point)], 
+                                 check=True, capture_output=True)
+                except subprocess.CalledProcessError:
+                    pass  # Process termination may have already unmounted
+            
+            self.log("Filesystem unmounted successfully.")
+            
+        except Exception as e:
+            self.log(f"Error during unmount: {e}")
+        finally:
+            # Reset state (only if button exists - not on Windows)
+            if hasattr(self, 'mount_btn') and self.mount_btn is not None:
+                self.mount_btn.config(text="Mount as Filesystem", command=self.mount_fuse)
+            self.fuse_mount_point = None
+            self.fuse_process = None
+            self.fuse_mounted = False
+    
+    def _reset_mount_button(self):
+        """Reset mount button to initial state"""
+        if hasattr(self, 'mount_btn') and self.mount_btn is not None:
+            self.mount_btn.config(
+                text="Mount as Filesystem", 
+                command=self.mount_fuse,
+                state="normal" if self.current_files else "disabled"
+            )
+        self.fuse_mounted = False
+    
+    def _check_and_unmount_if_needed(self, action_name="proceed"):
+        """Check if FUSE is mounted and ask user if they want to unmount"""
+        if hasattr(self, 'fuse_mounted') and self.fuse_mounted and self.fuse_mount_point:
+            response = messagebox.askyesno(
+                "FUSE Filesystem Mounted",
+                f"A filesystem is currently mounted at:\n{self.fuse_mount_point}\n\n" +
+                f"Do you want to unmount it and {action_name}?"
+            )
+            if response:
+                self.unmount_fuse()
+                return True
+            else:
+                return False
+        return True
+    
     def on_closing(self):
         """Handle application closing"""
+        # Check if FUSE filesystem is mounted
+        if hasattr(self, 'fuse_mounted') and self.fuse_mounted and self.fuse_mount_point:
+            response = messagebox.askyesnocancel(
+                "FUSE Filesystem Mounted",
+                f"A filesystem is currently mounted at:\n{self.fuse_mount_point}\n\n" +
+                "Do you want to keep it mounted after closing the application?\n\n" +
+                "• Yes: Keep mounted and close application\n" +
+                "• No: Unmount and close application\n" +
+                "• Cancel: Don't close application"
+            )
+            
+            if response is None:  # Cancel
+                return  # Don't close
+            elif response is False:  # No - unmount and close
+                self.unmount_fuse()
+                self.log("Filesystem unmounted before closing.")
+            else:  # Yes - keep mounted and close
+                self.log("Leaving filesystem mounted. You can unmount it manually with:")
+                if sys.platform == "darwin":
+                    self.log(f"  umount {self.fuse_mount_point}")
+                elif sys.platform.startswith('linux'):
+                    self.log(f"  fusermount -u {self.fuse_mount_point}")
+                
+                # Detach the process so it continues running
+                if self.fuse_process:
+                    self.fuse_process = None  # Don't terminate it
+        
         # Clean up temp directory
         if self.temp_dir and self.temp_dir.exists():
             shutil.rmtree(self.temp_dir, ignore_errors=True)

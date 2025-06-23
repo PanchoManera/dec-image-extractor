@@ -1,0 +1,460 @@
+.MCALL .MODULE
+.MODULE TERMID,VERSION=03,COMMENT=<Determine console type>
+
+;                      COPYRIGHT (c) 1986 BY
+;                DIGITAL EQUIPMENT CORPORATION, MAYNARD,
+;                 MASSACHUSETTS.   ALL RIGHTS RESERVED.
+;
+; THIS SOFTWARE IS FURNISHED UNDER A LICENSE AND MAY BE USED AND  COPIED
+; ONLY  IN  ACCORDANCE  WITH  THE  TERMS  OF  SUCH  LICENSE AND WITH THE
+; INCLUSION OF THE ABOVE COPYRIGHT NOTICE.  THIS SOFTWARE OR  ANY  OTHER
+; COPIES  THEREOF MAY NOT BE PROVIDED OR OTHERWISE MADE AVAILABLE TO ANY
+; OTHER PERSON.  NO TITLE TO AND OWNERSHIP OF  THE  SOFTWARE  IS  HEREBY
+; TRANSFERRED.
+;
+; THE INFORMATION IN THIS SOFTWARE IS SUBJECT TO CHANGE  WITHOUT  NOTICE
+; AND  SHOULD  NOT  BE  CONSTRUED  AS  A COMMITMENT BY DIGITAL EQUIPMENT
+; CORPORATION.
+;
+; DIGITAL ASSUMES NO RESPONSIBILITY FOR THE USE OR  RELIABILITY  OF  ITS
+; SOFTWARE ON EQUIPMENT THAT IS NOT SUPPLIED BY DIGITAL.
+;
+	.ENABL LC
+;+
+;	This program determines the nature of your console terminal.
+;	Terminals recognized are VT50, VT50H, VT50H with hard copy
+;	unit, VT52, VT52 with hard copy unit, LA34, LA120, VT55, VT102,
+;	VT131, VT132, VT100 in ANSI mode and VT100 in VT52 mode. 
+;	The last mentioned is set in ANSI mode before the program exits.
+;
+;	All newer terminals i.e. VT1xx, LA34 and LA1xx respond to the
+;	ANSI query message <ESC>[0c by replying with an unique character
+;	string. The other, older terminals respond only to <ESC>Z.
+;	An ANSI query has the unfortunate effect of hanging a VT52 because
+;	<ESC>[ corresponds to the SET NOSCROLL command for a VT52.
+;	To forestall this risk the program sends an <ESC>Z first to
+;	determine if the terminal is one of the older ones. If there is
+;	no response to the <ESC>Z the ANSI query is transmitted.
+;
+;	It is conceivable that a VT52 fails to reply to an <ESC>Z
+;	because of line or modem noise distorting the query. In that
+;	case the ANSI query would freeze the terminal. Therefore a
+;	SET UNSCROLL command in the shape of <ESC>\ is transmitted
+;	for safety before the program exits. In the event that the
+;	VT52 cursor were on the last line, the SET UNSCROLL command
+;	also wouldn't work. That is why, prior to sending the ANSI
+;	query <ESC>[c a "cursor up" command <ESC>A for a VT52 is
+;	transmitted so that the final SET UNSCROLL command is
+;	effective.
+;
+;	Messages regarding the presence or absence of the clock and
+;	printing the terminal type are printed on enabling the condi-
+;	tional assembly parameter $MESG.
+;
+;	The user error byte is set to warning if the terminal is a video,
+;	and fatal if the terminal type is unknown.
+;
+; Author:	Shekar Sengputa
+;
+; Edits:	L. Parent 	- add new terminal support
+;				- lengthen reply buffer
+;				- remove clock stuff
+;-
+.MCALL .TTINR, .TTYOUT, .EXIT, .MRKT, .PRINT, .QSET, .RCTRLO, .GTIM
+.GLOBL TIME			;SYSLIB routine
+;
+;	Bit and word definitions
+;
+	USERRB	=	53		;user error byte
+	WARN$	=	2		;terminal is video
+	ERR$	=	4		;terminal is unknown
+	JSW	=	44		;job status word
+	LCBIT	=	40000		;lower case bit - 14
+	TTSPC$	=	10000		;terminal special mode bit - 12
+	TCBIT$	=	100		;inhibit wait on reads for FB - bit 6
+	MASK	=	LCBIT+TTSPC$+TCBIT$
+	$MESG	=	1		;remove semicolon to print termid. msg
+;
+;	Start of main program
+;
+	.ENABL	LSB
+START:
+	.GTIM	#AREA,#T1		;get initial time
+	BIS	#MASK,@#JSW		;adjust jsw
+	MOV	#QUERY1, R1		;pointer to esc. Z query
+	JSR	PC,OUTSTR		;output query message
+	MOV	#REPLY, R2		;address to store terminal reply
+	JSR	PC,INSTR		;get the answer message from terminal
+	CMPB	#'/,REPLY+1		;is it an old fashioned response
+	BNE	ANSCHK			;no, try to send an ANSI query
+	MOVB	REPLY+2,R1		;the third character is distinctive
+	MOV	#TABL1,R2		;R2 points to head of first table
+1$:	TST	(R2)+			;end of list?
+	BEQ	3$			;unidentified terminal
+	INC	R2			;add one to get to higher byte
+	CMPB	R1,(R2)+		;check against table and advance ptr.
+	BNE	1$			;if no match try next table entry
+	JMP	@-4(R2)			;if match, jump to the correct routine
+ANSCHK:
+	MOV	#QUERY2,R1		;prepare to send ANSI query
+	JSR	PC,OUTSTR		;output the string
+	MOV	#REPLY,R2		;use the same reply buffer
+	JSR	PC,INSTR		;read in reply from terminal
+	MOVB	REPLY+3,R1		;move terminal-id to R1
+	MOVB	REPLY+4,R3		;move other byte to R3
+	BEQ	3$			;if it's a zero terminal unknown
+	MOV	#TABL2,R2		;R2 points to head of first table
+2$:	TST	(R2)+			;end of list?
+	BEQ	3$			;unidentified terminal
+	TSTB	(R2)			;is it zero?
+	BEQ	25$			;if so, don't check it
+	CMPB	R3,(R2)			;does it match?
+	BEQ	25$			;branch if so
+	INC	R2			;point to next byte in reply
+	INC	R2			;skip next byte in reply
+	BR	2$			;no match
+25$:	INC	R2			;check next byte
+	CMPB	R1,(R2)+		;does it match?
+	BNE	2$			;branch if so
+	JMP	@-4(R2)			;if match, jump to the correct routine
+3$:	BISB	#WARN$,@#USERRB		;unknown terminal, set user error byte
+	.IFDF	$MESG
+	MOV	#UNKNWN,R2		;point R2 to unknown term message
+	.IFF
+	CLR	R2
+	.ENDC
+	.DSABL 	LSB
+EXIT:
+	MOV	#SAFETY,R1		;issue an unclog VT52 for safety
+	JSR	PC,OUTSTR		;output esc. seq and final message
+.IFDF	$MESG
+	TST	R2			;do we want to print message?
+	BEQ	1$			;if no cleanup mask and exit
+	MOV	#MSG,R1			;point R1 to beginning of message
+	JSR	PC,OUTSTR		;print message
+	MOV	R2,R1			;R2 points to terminal type
+	JSR	PC,OUTSTR		;print terminal-id.
+	MOV	#CRLF,R1		;print a carriage return before
+	JSR	PC,OUTSTR		;finishing
+.ENDC
+1$:	BIC	#MASK,@#JSW		;clear all special mode bits
+	.EXIT
+;
+;	Subroutine to output the query
+;	strings and any other messages
+;
+OUTSTR:
+	.RCTRLO				;Make sure JSWs agree
+OUTQRY:	
+	.TTYOUT	(R1)+			;start sending query message
+	TSTB	(R1)			;end of escape sequence?
+	BNE	OUTQRY			;0 byte signifies end of query
+	RTS	PC
+;
+;	Subroutine to read the terminal replies
+;
+	.ENABL	LSB
+INSTR:
+	MOV	#2000,R1		;use R1 as counter to be counted down
+INRPLY:
+	.TTINR				;read
+	BCS	NOCHAR			;carry set means nothing to read
+	MOVB	R0,(R2)+		;store in input buffer
+	BR	INRPLY			;try to read another character
+NOCHAR:
+	DEC	R1			;if no clock we have to do a wait loop
+	BNE	INRPLY			;try to read again if counter > 0
+	RTS	PC			;if wait loop return after R1=0
+;
+;	Procedures to handle each type of terminal.
+;	If a message is to be printed a pointer to
+;	to the text to be printed is stored in R2.
+;	Since we are testing video terminals the warning
+;	bit is set in the user error byte 53 in all
+;	cases except for video terminals.
+;
+VT50:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT50M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT50H:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT50HM,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT50HC:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT50CM,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT52:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT52M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT52C:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT52CM,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT55:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT55M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT152:	
+	BISB	#WARN$,@#USERRB		;Video terminal
+	MOV	#SETANS,R1		;this is a VT100 in VT52 mode
+	JSR	PC,OUTSTR		;the terminal is set to ANSI
+	.IFDF	$MESG
+	MOV	#VT152M,R2		;mode before a return from the
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT			;routine is executed
+VT100:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT100M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT102:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT102M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VR201:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VR201M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VR202:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VR202M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT125:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT125M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT131:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT131M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+VT132:
+	BISB	#WARN$,@#USERRB		;Video terminal
+	.IFDF	$MESG
+	MOV	#VT132M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+LA120:	
+	.IFDF	$MESG
+	MOV	#LA120M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+LA100:	
+	.IFDF	$MESG
+	MOV	#LA100M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+LA34:
+	.IFDF	$MESG
+	MOV	#LA34M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+LA12:
+	.IFDF	$MESG
+	MOV	#LA12M,R2
+	.IFF
+	CLR	R2
+	.ENDC
+	JMP	EXIT
+	.NLIST	BEX
+QUERY1:	.ASCIZ <33>/Z/			;query message valid for older
+	.EVEN				;terminals
+;
+;	Prior to sending an ANSI query
+;	a "move cursor up by one line"
+;	for a VT52 is issued. This will
+;	be necessary only if the VT52
+;	did not respond to the first query
+;	due to line noise. Moving the cursor
+;	up by one line ensures that a SET
+;	SCROLL issued before the end of the
+;	program will unclog the VT52 should
+;	it be hung up by the ANSI query
+;
+;
+QUERY2:	.ASCIZ <33>/A/<33>/[c/		;ANSI query message preceded by
+					;move cursor up by one line for
+					;VT52
+SETANS:	.ASCIZ <33>/</
+	.EVEN
+CRLF:	.BYTE	15,12,0,0		;cr/lf followed by null bytes
+REPLY:	.BLKB	40.			;longer than the longest reply
+;
+;	Table 1 contains the responses of
+;	older terminals which reply to a query
+;	of <ESC>Z. The third byte of the reply
+;	is unique for every terminal if it responds
+;
+TABL1:
+	.WORD	VT50
+	.BYTE	0,'A			;esc /A is the reply of a VT50
+      	.WORD	VT50H
+	.BYTE	0,'H			;esc /H is a VT50H
+      	.WORD	VT50HC
+	.BYTE	0,'J			;esc /J is a VT50H with copier
+	.WORD	VT52
+	.BYTE	0,'K			;esc /K is a VT52
+	.WORD	VT52C
+	.BYTE	0,'L			;esc /L is a VT52 with copier
+	.WORD	VT55
+	.BYTE	0,'C			;esc /C is a VT55
+	.WORD	VT152
+	.BYTE	0,'Z			;esc /Z is a VT100 in 52 mode
+	.WORD	0			;end of old fashioned list
+;
+;	Table 2 is a list of replies of all
+;	terminals that respond to the ANSI 
+;	query of <ESC>[c. The fourth byte of the
+;	reply is the unique id of the terminal
+;
+TABL2:	
+	.WORD	VR201			;The 4th word of a VT100 Class
+	.BYTE	'1,'6			;in ANSI mode is an ASCII 61
+	.WORD	VR202			;The 4th word of a VT200 class
+	.BYTE	'2,'6			;in ANSI mode is an ASCII 62
+	.WORD	VT125			;The 4th word of a VT125
+	.BYTE	'2,'1			;in ANSI mode is an ASCII 12
+	.WORD	LA100			;The 4th & 5th bytes of an LA100
+	.BYTE	'0,'1			;in ANSI mode is an ASCII 10
+	.WORD	LA12			;The fourth word of an LA12
+	.BYTE	'4,'1			;is an ASCII 14
+	.WORD	VT100			;the fourth byte of a VT100
+	.BYTE	0,'1			;in ANSI mode is an ASCII 1
+	.WORD	VT132			;The fourth byte of a VT132
+	.BYTE	0,'4			;in ANSI mode is an ASCII 4
+	.WORD	VT102			;The fourth byte of a VT102
+	.BYTE	0,'6			;in ANSI mode is an ASCII 6
+	.WORD	VT131			;The fourth byte of a VT131
+	.BYTE	0,'7			;in ANSI mode is an ASCII 7
+	.WORD	LA120			;the fourth byte of an LA120 
+	.BYTE	0,'2			;is an ASCII 2
+	.WORD	LA34			;the fourth byte of an LA34
+	.BYTE	0,'3			;is an ASCII 3
+	.WORD	0
+SAFETY:	.ASCIZ <33>/\/			;SET SCROLL for VT52 for safety
+	.EVEN
+.IFDF	$MESG
+MSG:	.ASCIZ/        Your console is a /
+	.EVEN
+.ENDC
+TIMOUT:	.WORD 0				;flagword set when time for read is up
+CLOCK:	.WORD 0				;flagword :0=initial state,1=clock is
+					;present,2=clock is absent
+T1:	.BLKW 2				;storage area for initial time
+T2:	.BLKW 2				;storage area for subsequent .GTIMs
+TIMA1:					;TIMA1 and TIMA2 are 8 byte areas
+	.BLKB 6				;where ASCII time is stored in the
+SEC1:	.BLKB 2				;TIME subroutine. SEC1 and SEC2 are
+TIMA2:					;compared to determine if 1 or more
+	.BLKB 6				;seconds have passed since the read
+SEC2:	.BLKB 2				;from the terminal was started.
+.IFDF	$MESG
+NOCLCK:	.ASCIZ/There is no clock/
+	.EVEN
+YCLOCK:	.ASCIZ/There is a clock/
+	.EVEN
+.ENDC
+AREA:	.BLKW 2				;.GTIM area
+PARM:	
+	.WORD 1				;high byte=0, low byte=argument count
+	.WORD 0				;either TIMA1 or TIMA2 is loaded here
+.IFDF	$MESG
+VT50M:	.ASCIZ/VT50/
+	.EVEN
+VT50HM:	.ASCIZ/VT50H/
+	.EVEN
+VT50CM:	.ASCIZ/VT50H with copier/
+	.EVEN
+VT52M:	.ASCIZ/VT52/
+	.EVEN
+VT52CM:	.ASCIZ/VT52 with copier/
+	.EVEN
+VT55M:	.ASCIZ/VT55/
+	.EVEN
+VT152M:	.ASCIZ/VT100 in VT52 mode/
+	.EVEN
+LA120M:	.ASCIZ/LA120/
+	.EVEN
+VT100M:	.ASCIZ/VT100/
+	.EVEN
+VT102M:	.ASCIZ/VT102/
+	.EVEN
+VT125M:	.ASCIZ/VT125/
+	.EVEN
+VR201M:	.ASCIZ/VT100 class terminal/
+	.EVEN
+VR202M:	.ASCIZ/VT200 class terminal/
+	.EVEN
+VT131M:	.ASCIZ/VT131/
+	.EVEN
+VT132M:	.ASCIZ/VT132/
+	.EVEN
+LA34M:	.ASCIZ/LA34/
+	.EVEN
+LA100M:	.ASCIZ/LA100/
+	.EVEN
+LA12M:	.ASCIZ/LA12/
+	.EVEN
+UNKNWN:	.ASCIZ/<UNKNOWN>/
+.ENDC
+	.END START
+                                                                                                                                                                                                                         
