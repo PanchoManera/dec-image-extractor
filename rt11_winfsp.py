@@ -41,11 +41,15 @@ if sys.platform != "win32":
 # Import WinFsp-compatible FUSE library
 WINFSP_AVAILABLE = False
 try:
-    # Ensure sys is available for refuse library
+    # Workaround for refuse library bug: inject sys into refuse module namespace
     import sys
+    import refuse
+    import refuse._refactor
+    refuse._refactor.sys = sys  # Inject sys module to fix the NameError
+    
     from refuse.high import FUSE, FuseOSError, Operations, LoggingMixIn
     WINFSP_AVAILABLE = True
-    print("Using refuse library for WinFsp")
+    print("Using refuse library for WinFsp (with sys fix)")
 except ImportError as e:
     print(f"refuse library not available: {e}")
     try:
@@ -53,6 +57,16 @@ except ImportError as e:
         from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
         WINFSP_AVAILABLE = True
         print("Using fusepy library as fallback")
+    except ImportError as e2:
+        print(f"fusepy library not available: {e2}")
+        WINFSP_AVAILABLE = False
+except Exception as e:
+    print(f"Error initializing refuse library: {e}")
+    try:
+        # Fallback to regular fusepy (might work with WinFsp)
+        from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
+        WINFSP_AVAILABLE = True
+        print("Using fusepy library as fallback after refuse error")
     except ImportError as e2:
         print(f"fusepy library not available: {e2}")
         WINFSP_AVAILABLE = False
