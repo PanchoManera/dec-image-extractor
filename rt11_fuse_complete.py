@@ -80,13 +80,43 @@ class RT11ExtractorWrapper:
         self._file_data_cache = {}  # Cache para datos de archivos
         
         # Find rt11extract in different possible locations
-        script_dir = Path(__file__).parent
-        possible_paths = [
-            script_dir / "rt11extract_cli",  # Standalone executable (preferred)
-            script_dir / "rt11extract",      # Script version
-            script_dir.parent / "MacOS" / "rt11extract_cli",  # In macOS bundle MacOS folder
-            script_dir.parent.parent / "MacOS" / "rt11extract_cli",  # Alternative bundle path
-        ]
+        # Handle PyInstaller executable vs script mode
+        if getattr(sys, 'frozen', False):
+            # Running as PyInstaller executable
+            # Get the actual app bundle path from _MEIPASS
+            bundle_path = None
+            if hasattr(sys, '_MEIPASS'):
+                # Try to find the actual .app bundle path
+                current_path = Path(sys.executable)
+                # Walk up to find .app bundle
+                for parent in current_path.parents:
+                    if parent.name.endswith('.app'):
+                        bundle_path = parent
+                        break
+            
+            if bundle_path:
+                script_dir = bundle_path / "Contents" / "Resources"
+                possible_paths = [
+                    bundle_path / "Contents" / "MacOS" / "rt11extract_cli",  # In macOS bundle MacOS folder
+                    script_dir / "rt11extract_cli",  # In Resources folder
+                    script_dir / "rt11extract",      # Script version in Resources
+                ]
+            else:
+                # Fallback if we can't find bundle
+                script_dir = Path(sys.executable).parent
+                possible_paths = [
+                    script_dir / "rt11extract_cli",
+                    script_dir / "rt11extract",
+                ]
+        else:
+            # Running as script
+            script_dir = Path(__file__).parent
+            possible_paths = [
+                script_dir / "rt11extract_cli",  # Standalone executable (preferred)
+                script_dir / "rt11extract",      # Script version
+                script_dir.parent / "MacOS" / "rt11extract_cli",  # In macOS bundle MacOS folder
+                script_dir.parent.parent / "MacOS" / "rt11extract_cli",  # Alternative bundle path
+            ]
         
         self.rt11extract_path = None
         for path in possible_paths:

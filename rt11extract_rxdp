@@ -1,0 +1,681 @@
+#!/usr/bin/env python3
+"""
+Enhanced RT-11 Extractor with RXDP Support v2.1
+Specialized version for RXDP (RX02 Dual Density) and variant formats
+"""
+
+import struct
+import sys
+import os
+import argparse
+import logging
+from pathlib import Path
+from typing import List, Tuple, Optional, Dict, Any, Union
+from dataclasses import dataclass, field
+from enum import Enum, IntEnum
+from datetime import datetime, date
+
+# RT-11 Constants
+class RT11Constants:
+    BLOCK_SIZE = 512
+    HOME_BLOCK = 1
+    FIRST_DIR_BLOCK = 6
+    MAX_FILENAME_LENGTH = 6
+    MAX_FILETYPE_LENGTH = 3
+    DIRECTORY_ENTRY_SIZE = 14
+    SEGMENT_SIZE = 1024
+    MAX_SEGMENTS = 31
+
+# Enhanced RADIX-50 character set
+RAD50_CHARS = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ$.?0123456789'
+
+# RT-11 file status flags
+E_TENT = 0o400    # Tentative file
+E_MPTY = 0o1000   # Empty area (UNUSED)
+E_PERM = 0o2000   # Permanent file
+E_PROT = 0o102000 # Protected permanent file
+E_EOS = 0o4000    # End-of-segment marker
+
+@dataclass
+class DirectoryHeader:
+    """RT-11 Directory header structure"""
+    segments_available: int = 0
+    next_segment: int = 0
+    highest_segment: int = 0
+    extra_bytes: int = 0
+    start_block: int = 0
+    valid: bool = False
+
+@dataclass 
+class RT11FileEntry:
+    """RT-11 file entry with full validation"""
+    filename: str
+    file_type: str
+    status: int
+    start_block: int
+    length: int
+    creation_date: Optional[int] = None
+    job_channel: int = 0
+    segment: int = 0
+    offset: int = 0
+    entry_size: int = 14
+    extra_data: bytes = field(default_factory=bytes)
+    
+    @property
+    def is_valid(self) -> bool:
+        return (self.status != 0 and 
+                self.filename.strip() != '' and
+                not self.is_end_marker and
+                not self.is_unused)
+    
+    @property
+    def is_permanent(self) -> bool:
+        return (self.status & E_PERM) == E_PERM
+    
+    @property
+    def is_tentative(self) -> bool:
+        return (self.status & E_TENT) == E_TENT
+    
+    @property
+    def is_protected(self) -> bool:
+        return (self.status & E_PROT) == E_PROT
+    
+    @property
+    def is_unused(self) -> bool:
+        return (self.status & E_MPTY) == E_MPTY
+    
+    @property
+    def is_end_marker(self) -> bool:
+        return (self.status & E_EOS) == E_EOS
+    
+    @property
+    def full_filename(self) -> str:
+        name = self.filename.strip()
+        ext = self.file_type.strip()
+        if ext:
+            return f"{name}.{ext}"
+        return name
+    
+    @property
+    def size_bytes(self) -> int:
+        return self.length * RT11Constants.BLOCK_SIZE
+
+class RT11Exception(Exception):
+    pass
+
+class EnhancedRT11Extractor:
+    """Enhanced RT-11 extractor with RXDP support"""
+    
+    def __init__(self, image_path: str, verbose: bool = False, strict: bool = True, extract_tentative: bool = False):
+        self.image_path = Path(image_path)
+        self.verbose = verbose
+        self.strict = strict
+        self.extract_tentative = extract_tentative
+        self.image_data = None
+        self.directory_entries: List[RT11FileEntry] = []
+        self.directory_headers: List[DirectoryHeader] = []
+        self.rxdp_mode = False
+        
+        # Setup logging
+        self._setup_logging()
+        
+    def _setup_logging(self) -> None:
+        """Setup comprehensive logging system"""
+        log_level = logging.DEBUG if self.verbose else logging.INFO
+        logging.basicConfig(
+            level=log_level,
+            format='%(levelname)s: %(message)s'
+        )
+        self.logger = logging.getLogger(__name__)
+        
+    def _log_error(self, message: str) -> None:
+        """Log an error"""
+        self.logger.error(message)
+        
+    def _log_warning(self, message: str) -> None:
+        """Log a warning"""
+        self.logger.warning(message)
+        
+    def _log_info(self, message: str) -> None:
+        """Log informational message"""
+        self.logger.info(message)
+        
+    def _log_debug(self, message: str) -> None:
+        """Log debug message"""
+        self.logger.debug(message)
+        
+    def _read_block(self, block_num: int) -> bytes:
+        """Read a block with error handling"""
+        if not self.image_data:
+            raise RT11Exception("Image not loaded")
+            
+        offset = block_num * RT11Constants.BLOCK_SIZE
+        if offset + RT11Constants.BLOCK_SIZE > len(self.image_data):
+            error_msg = f"Block {block_num} beyond image size"
+            self._log_error(error_msg)
+            if self.strict:
+                raise RT11Exception(error_msg)
+            return b'\x00' * RT11Constants.BLOCK_SIZE
+            
+        return self.image_data[offset:offset + RT11Constants.BLOCK_SIZE]
+    
+    def _radix50_decode(self, word: int) -> str:
+        """Decode Radix-50 with validation"""
+        if word == 0:
+            return "   "
+            
+        result = ""
+        temp_word = word
+        
+        for i in range(3):
+            char_index = temp_word % 40
+            if char_index >= len(RAD50_CHARS):
+                self._log_warning(f"Invalid Radix-50 character index: {char_index} in word {word:04X}")
+                result = "?" + result
+            else:
+                result = RAD50_CHARS[char_index] + result
+            temp_word //= 40
+            
+        return result
+    
+    def _decode_rt11_filename(self, word1: int, word2: int, word3: int) -> Optional[Tuple[str, str]]:
+        """Decode RT-11 filename from 3 RAD50 words with validation"""
+        try:
+            part1 = self._radix50_decode(word1)
+            part2 = self._radix50_decode(word2)  
+            part3 = self._radix50_decode(word3)
+            
+            filename = (part1 + part2).rstrip()
+            file_type = part3.rstrip()
+            
+            # Validate filename characters
+            if not filename or len(filename) > RT11Constants.MAX_FILENAME_LENGTH:
+                return None
+                
+            if file_type and len(file_type) > RT11Constants.MAX_FILETYPE_LENGTH:
+                return None
+            
+            return filename, file_type
+            
+        except Exception as e:
+            self._log_warning(f"Error decoding filename: {e}")
+            return None
+    
+    def _decode_rt11_date(self, date_word: int) -> Optional[str]:
+        """Decode RT-11 date format with validation"""
+        if date_word == 0:
+            return None
+        
+        try:
+            # RT-11 date format:
+            # Bits 0-4: year base (from 1972)
+            # Bits 5-9: day  
+            # Bits 10-13: month
+            # Bits 14-15: age/era (adds 32 years per increment)
+            year_base = date_word & 0x1F  # bits 0-4
+            day = (date_word >> 5) & 0x1F  # bits 5-9
+            month = (date_word >> 10) & 0x0F  # bits 10-13
+            age = (date_word >> 14) & 0x03  # bits 14-15
+            
+            year = year_base + 1972 + (age * 32)
+            
+            # Handle zero values
+            if day == 0:
+                day = 1
+            if month == 0:
+                month = 1
+                
+            if 1 <= month <= 12 and 1 <= day <= 31 and 1972 <= year <= 2099:
+                return f"{year:04d}-{month:02d}-{day:02d}"
+                
+        except Exception as e:
+            self._log_warning(f"Error decoding date {date_word:04X}: {e}")
+            
+        return None
+
+    def _has_meaningful_content(self, data: bytes) -> bool:
+        """Check if data contains meaningful content (not just zeros or random)"""
+        if len(data) < 10:
+            return False
+            
+        # Check for too many zeros
+        zero_count = data.count(0)
+        if zero_count > len(data) * 0.9:  # More than 90% zeros
+            return False
+            
+        # Look for ASCII printable characters
+        printable_count = 0
+        for byte in data[:100]:  # Check first 100 bytes
+            if 32 <= byte <= 126:  # ASCII printable range
+                printable_count += 1
+                
+        # If we have reasonable amount of printable content, consider it meaningful
+        if printable_count > 10:
+            return True
+            
+        # Check for common RT-11 patterns or file structures
+        # Look for common RT-11 command patterns
+        data_str = data[:200].decode('ascii', errors='ignore').upper()
+        rt11_patterns = ['LOAD', 'SAVE', 'PIP', 'DIR', 'TYPE', 'DELETE', 'COPY', '.SYS', '.SAV', '.MAC']
+        
+        for pattern in rt11_patterns:
+            if pattern in data_str:
+                return True
+                
+        return False
+
+    def load_image(self) -> None:
+        """Load disk image"""
+        if not self.image_path.exists():
+            raise RT11Exception(f"Image file not found: {self.image_path}")
+            
+        try:
+            with open(self.image_path, 'rb') as f:
+                self.image_data = f.read()
+            self._log_info(f"Loaded image: {len(self.image_data)} bytes")
+        except Exception as e:
+            raise RT11Exception(f"Error loading image: {e}")
+    
+    def _try_rxdp_directory_locations(self) -> List[int]:
+        """Try different directory locations for RXDP format and return all candidates"""
+        # RXDP might have directory at different locations
+        # Prioritize block 1 and 2 for RXDP formats
+        possible_locations = [1, 2, 6, 3, 10]  # blocks
+        valid_blocks = []
+        
+        for block in possible_locations:
+            try:
+                offset = block * RT11Constants.BLOCK_SIZE
+                if offset + RT11Constants.BLOCK_SIZE <= len(self.image_data):
+                    dir_data = self.image_data[offset:offset + RT11Constants.BLOCK_SIZE]
+                    
+                    # Try to parse header
+                    header = self._parse_directory_header_flexible(dir_data[:10])
+                    if header and header.valid:
+                        self._log_info(f"Found valid RXDP directory at block {block}")
+                        valid_blocks.append(block)
+                        
+            except Exception as e:
+                self._log_debug(f"Block {block} not valid directory: {e}")
+                continue
+                
+        return valid_blocks
+    
+    def _parse_directory_header_flexible(self, data: bytes) -> Optional[DirectoryHeader]:
+        """Parse directory header with flexible validation for RXDP"""
+        if len(data) < 10:
+            return None
+            
+        header = DirectoryHeader()
+        
+        try:
+            words = struct.unpack('<5H', data[:10])
+            
+            header.segments_available = words[0]
+            header.next_segment = words[1] 
+            header.highest_segment = words[2]
+            header.extra_bytes = words[3]
+            header.start_block = words[4]
+            
+            # More flexible validation for RXDP
+            # RXDP might have different value ranges
+            self._log_debug(f"Validating header: segs={header.segments_available}, next={header.next_segment}, highest={header.highest_segment}, extra={header.extra_bytes}, start={header.start_block}")
+            
+            if (0 <= header.segments_available <= 50 and  # Allow 0 segments
+                header.next_segment <= 50 and
+                header.highest_segment <= 50 and
+                0 <= header.extra_bytes <= 20 and  # Allow odd extra bytes
+                header.start_block < 65536):  # Much higher limit for RXDP
+                
+                header.valid = True
+                self._log_info(f"RXDP header: segs={header.segments_available}, next={header.next_segment}, highest={header.highest_segment}, extra={header.extra_bytes}")
+                return header
+            else:
+                self._log_debug(f"Header validation failed for block with segs={header.segments_available}, next={header.next_segment}, highest={header.highest_segment}, extra={header.extra_bytes}, start={header.start_block}")
+                
+        except Exception as e:
+            self._log_debug(f"Header parsing failed: {e}")
+            
+        return None
+    
+    def _parse_directory_entry_flexible(self, data: bytes, offset: int, entry_size: int) -> Optional[RT11FileEntry]:
+        """Parse directory entry with flexible entry sizes for RXDP"""
+        if offset + 14 > len(data):  # Minimum size is still 14
+            return None
+            
+        try:
+            # Handle odd entry sizes by reading minimum 14 bytes
+            min_size = max(14, (entry_size // 2) * 2)  # Round down to even
+            if offset + min_size > len(data):
+                min_size = 14
+                
+            entry_data = data[offset:offset + min_size]
+            words = struct.unpack(f'<{min_size//2}H', entry_data)
+            
+            status = words[0]
+            
+            # End of segment marker
+            if status & E_EOS:
+                return None
+                
+            # Handle zero status differently for RXDP
+            if status == 0:
+                return None
+                
+            # Decode filename (3 Radix-50 words)
+            if len(words) < 6:
+                return None
+                
+            filename_result = self._decode_rt11_filename(words[1], words[2], words[3])
+            if not filename_result:
+                return None
+                
+            filename, file_type = filename_result
+            
+            # Length in blocks
+            length = words[5] if len(words) > 5 else 0
+            
+            # Additional data
+            creation_date = None
+            job_channel = 0
+            
+            if len(words) > 6:
+                job_channel = words[6]
+            if len(words) > 7:
+                creation_date = words[7]
+                
+            # Extra data
+            extra_data = entry_data[14:] if min_size > 14 else b''
+                
+            entry = RT11FileEntry(
+                filename=filename,
+                file_type=file_type,
+                status=status,
+                start_block=0,  # Will be calculated later
+                length=length,
+                creation_date=creation_date,
+                job_channel=job_channel,
+                segment=0,  # Will be set by caller
+                offset=offset,
+                entry_size=min_size,
+                extra_data=extra_data
+            )
+            
+            # More flexible validation for RXDP
+            if entry.length > 100000:  # Very large but not impossible
+                self._log_warning(f"Large file length {entry.length} for {entry.full_filename}")
+                
+            return entry
+            
+        except Exception as e:
+            self._log_debug(f"Error parsing entry at offset {offset}: {e}")
+            return None
+
+    def _calculate_file_positions(self) -> None:
+        """Calculate starting block positions for files"""
+        # For embedded RXDP files, don't change their start_block as it's already correct
+        # Only calculate positions for traditional RT-11 files
+        current_block = 10  # Start after typical directory area
+        
+        for entry in self.directory_entries:
+            if entry.is_valid and not entry.filename.startswith("RXDP"):
+                # Only update position for non-embedded files
+                entry.start_block = current_block
+                current_block += entry.length
+
+    def parse_directory(self) -> None:
+        """Enhanced directory parsing with RXDP support"""
+        self._log_info("Parsing RT-11 directory (enhanced with RXDP support)...")
+        
+        if not self.image_data:
+            raise RT11Exception("Must load image first")
+        
+        # Try different directory locations for RXDP
+        rxdp_dir_blocks = self._try_rxdp_directory_locations()
+        if not rxdp_dir_blocks:
+            raise RT11Exception("No valid RT-11 or RXDP directory found")
+        
+        self.rxdp_mode = True
+        
+        # Process all valid directory blocks
+        for block_idx, current_block in enumerate(rxdp_dir_blocks):
+            self._log_info(f"Processing RXDP directory block {current_block} ({block_idx + 1}/{len(rxdp_dir_blocks)})")
+            self._process_rxdp_block(current_block, block_idx)
+            
+        self._calculate_file_positions()
+        self._log_info(f"RXDP directory parsing complete: {len(self.directory_entries)} files found")
+
+    def _process_rxdp_block(self, current_block: int, segment_count: int) -> None:
+        """Process a single RXDP directory block"""
+        try:
+            self._log_info(f"Reading RXDP directory segment {segment_count + 1} at block {current_block}")
+            dir_data = self._read_block(current_block)
+            
+            # Parse directory header with flexible validation
+            header = self._parse_directory_header_flexible(dir_data[:10])
+            if not header:
+                return
+                
+            self.directory_headers.append(header)
+            
+            # Determine entry size (handle odd sizes)
+            raw_entry_size = 14 + header.extra_bytes
+            entry_size = max(14, (raw_entry_size // 2) * 2)  # Round down to even
+            
+            self._log_info(f"RXDP entry size: {raw_entry_size} -> {entry_size}")
+            
+            # Parse entries in this directory segment
+            offset = 10  # Skip header
+            entries_found = 0
+            
+            # Check if there's potential file data immediately after header
+            # For RXDP, always check for embedded data first
+            self._log_info("Checking for embedded file data in RXDP format...")
+            file_data = dir_data[offset:]
+            if self._has_meaningful_content(file_data):
+                # Create a synthetic file entry for the embedded data
+                synthetic_entry = RT11FileEntry(
+                    filename=f"RXDP{current_block:02d}",
+                    file_type="TXT",
+                    status=E_PERM,
+                    start_block=current_block,
+                    length=1,  # One block
+                    segment=segment_count,
+                    offset=offset,
+                    entry_size=len(file_data)
+                )
+                self.directory_entries.append(synthetic_entry)
+                entries_found += 1
+                self._log_info(f"Found embedded RXDP data: {synthetic_entry.full_filename} ({len(file_data)} bytes)")
+            else:
+                self._log_info("No meaningful file data found after header - trying traditional directory entries...")
+                # Traditional directory entry parsing
+                while offset <= len(dir_data) - entry_size:
+                    entry = self._parse_directory_entry_flexible(dir_data, offset, entry_size)
+                    
+                    if entry is None:  # End of segment
+                        self._log_info(f"End of RXDP segment {segment_count + 1} reached")
+                        break
+                        
+                    if entry.is_valid:
+                        entry.segment = segment_count
+                        self.directory_entries.append(entry)
+                        entries_found += 1
+                        self._log_info(f"Found RXDP file: {entry.full_filename} ({entry.length} blocks)")
+                    elif entry.is_unused:
+                        self._log_info(f"RXDP unused area: {entry.length} blocks")
+                    
+                    offset += entry_size
+            
+            self._log_info(f"RXDP segment {segment_count + 1}: found {entries_found} entries")
+            
+        except Exception as e:
+            error_msg = f"Error reading RXDP segment {segment_count + 1}: {e}"
+            self._log_error(error_msg)
+
+    def extract_file(self, entry: RT11FileEntry, output_dir: Path) -> bool:
+        """Extract a file from the image"""
+        try:
+            file_data = self._read_file_data(entry)
+            if file_data is None:
+                return False
+                
+            output_file = output_dir / entry.full_filename
+            with open(output_file, 'wb') as f:
+                f.write(file_data)
+                
+            self._log_info(f"Extracted {entry.full_filename} ({len(file_data)} bytes)")
+            return True
+            
+        except Exception as e:
+            self._log_error(f"Error extracting {entry.full_filename}: {e}")
+            return False
+    
+    def _read_file_data(self, entry: RT11FileEntry) -> Optional[bytes]:
+        """Read file data from image"""
+        if not entry.is_valid:
+            return None
+            
+        try:
+            # For embedded RXDP files, read from the specific offset within the block
+            if entry.filename.startswith("RXDP") and hasattr(entry, 'entry_size') and entry.entry_size > 14:
+                # This is an embedded file - read from the specific location
+                start_offset = (entry.start_block * RT11Constants.BLOCK_SIZE) + entry.offset
+                end_offset = start_offset + entry.entry_size
+                
+                self._log_debug(f"Reading embedded RXDP file: block={entry.start_block}, offset={entry.offset}, size={entry.entry_size}")
+                self._log_debug(f"Calculated offsets: start=0x{start_offset:x} ({start_offset}), end=0x{end_offset:x} ({end_offset})")
+                
+                if end_offset > len(self.image_data):
+                    self._log_warning(f"Embedded file {entry.full_filename} extends beyond image")
+                    end_offset = len(self.image_data)
+                
+                data = self.image_data[start_offset:end_offset]
+                self._log_debug(f"Read {len(data)} bytes, first 50: {data[:50]}")
+                return data
+            else:
+                # Normal file reading
+                start_offset = entry.start_block * RT11Constants.BLOCK_SIZE
+                end_offset = start_offset + (entry.length * RT11Constants.BLOCK_SIZE)
+                
+                if end_offset > len(self.image_data):
+                    self._log_warning(f"File {entry.full_filename} extends beyond image")
+                    end_offset = len(self.image_data)
+                    
+                return self.image_data[start_offset:end_offset]
+            
+        except Exception as e:
+            self._log_error(f"Error reading file data for {entry.full_filename}: {e}")
+            return None
+
+def main():
+    """Enhanced main function"""
+    parser = argparse.ArgumentParser(
+        description='Enhanced RT-11 Disk Image Extractor with RXDP support v2.1',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s disk.dsk                    # Extract all permanent files
+  %(prog)s disk.dsk -l                 # List files only  
+  %(prog)s disk.dsk -l -d              # Detailed file listing
+  %(prog)s disk.dsk -t                 # Include tentative files
+  %(prog)s disk.dsk --no-strict        # Continue despite errors
+
+Supports: Standard RT-11, RXDP (RX02 Dual Density), and other RT-11 variants
+        """
+    )
+    
+    parser.add_argument('image', help='RT-11 disk image file (.dsk, .img, etc.)')
+    parser.add_argument('-o', '--output', default='extracted',
+                        help='Output directory for extracted files (default: extracted)')
+    parser.add_argument('-l', '--list', action='store_true',
+                        help='List files only, don\'t extract')
+    parser.add_argument('-d', '--detailed', action='store_true',
+                        help='Show detailed file information')
+    parser.add_argument('-t', '--tentative', action='store_true',
+                        help='Include tentative (temporary) files in extraction')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                        help='Verbose output with detailed logging')
+    parser.add_argument('--no-strict', action='store_true',
+                        help='Continue extraction despite errors (non-strict mode)')
+    
+    args = parser.parse_args()
+    
+    try:
+        print("Enhanced RT-11 Extractor v2.1 - With RXDP Support")
+        print(f"Processing: {args.image}")
+        print("-" * 50)
+        
+        # Initialize enhanced extractor
+        extractor = EnhancedRT11Extractor(
+            args.image,
+            strict=not args.no_strict,
+            extract_tentative=args.tentative,
+            verbose=args.verbose
+        )
+        
+        # Load and parse
+        extractor.load_image()
+        extractor.parse_directory()
+        
+        valid_files = [f for f in extractor.directory_entries if f.is_valid]
+        
+        if not valid_files:
+            print("\nNo files found in RT-11 directory")
+            return 1
+        
+        if args.list:
+            # Display file listing
+            print(f"\nRT-11 Directory Listing: {args.image}")
+            print("=" * 80)
+            print(f"{'Filename':<16} {'Status':<12} {'Size (KB)':<10} {'Date':<12}")
+            print("-" * 80)
+            
+            for entry in valid_files:
+                size_kb = (entry.length * 512) // 1024
+                status = "permanent" if entry.is_permanent else "tentative" if entry.is_tentative else "other"
+                date_str = extractor._decode_rt11_date(entry.creation_date) if entry.creation_date else 'N/A'
+                print(f"{entry.full_filename:<16} {status:<12} {size_kb:<10} {date_str:<12}")
+            
+            print(f"\nTotal files: {len(valid_files)}")
+            if extractor.rxdp_mode:
+                print("Note: Extracted using enhanced RXDP mode")
+        else:
+            # Extract files
+            output_dir = Path(args.output)
+            output_dir.mkdir(exist_ok=True)
+            
+            print(f"Extracting {len(valid_files)} files to: {output_dir}")
+            
+            extracted = 0
+            failed = 0
+            
+            for entry in valid_files:
+                try:
+                    success = extractor.extract_file(entry, output_dir)
+                    if success:
+                        extracted += 1
+                    else:
+                        failed += 1
+                except Exception as e:
+                    print(f"Error extracting {entry.full_filename}: {e}")
+                    failed += 1
+            
+            print(f"\nExtraction complete:")
+            print(f"  Successfully extracted: {extracted} files")
+            print(f"  Failed: {failed} files")
+            print(f"  Output directory: {output_dir}")
+            if extractor.rxdp_mode:
+                print("  Mode: Enhanced RXDP extraction")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        return 1
+
+if __name__ == '__main__':
+    sys.exit(main())

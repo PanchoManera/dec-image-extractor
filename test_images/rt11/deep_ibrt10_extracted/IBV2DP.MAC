@@ -1,0 +1,1320 @@
+	.enabl	lc
+	.title	IB2DP - GPIB11V-2 Driver
+	.nlist	bex, ttm, cnd
+
+;	This software is provided solely for use with
+;	the National Instruments GPIB11V-2
+
+;	Copyright 1980 National Instruments
+
+;	Jeffrey Kodosky
+;	June	1979
+;	Edit	09/01/81
+;	REV C:	01/01/82
+;	REV D:	12/15/82
+;	V1:	01/21/83	SPBYTE needs to be conditional on ONLYC
+;	V2:	09/26/83	Fix sign extension problem when writing to CCF
+;	V3:	01/01/85	Corrected BCR read discrepancy.
+
+
+; Bugs: Extended memory ignored in Xfer and ldr
+
+
+; Edit the following assignments to reflect the GPIB11V-2 switch settings
+
+UADDR=	0167710 ; Q-BUS address
+VECT=	0310	; Vector address
+PRI=	0240	; Interrupt priority
+
+PPENAB= 1	; 1 to include PP code, 0 to eliminate PP code
+TRI=	0	; 4 for Three-state highspeed, 0 for Normal timing
+SAC=	1	; 1 for System Controller, 0 for Not System Controller
+EXT=	1	; 2 for Extended, 1 for Normal GPIB addressing
+MSA=	0140	; Msa&037 for Extended, 0140 for Normal GPIB addressing
+MA=	025	; GPIB address
+
+; Edit the following assignments to reflect the desired software environment
+
+OS=	0	; 0 for Stand-alone, 1 for Operation under RT as a user interrupt service routine
+BASIC=	0	; 0 for FORTRAN/MACRO interface, 1 for BASIC interface
+ASYNCH= 0	; 0 for Synchronous I/O operations (return when DMA complete)
+		; 1 for Asynchronous I/O operations (return when DMA initiated)
+		; (ibwait() must be called prior to issuing another I/O operation)
+ONLYC=	0	; 0 for more than one Controller on the GPIBus, 1 for a single Controller on the GPIBus
+		; (ONLYC implies SAC, i.e., only a single Controller on the GPIBus means
+		; that the GPIB11V-2 is the System Controller)
+DIAG=	0	; 0 for Normal software module, 1 for Special diagnostic support module
+		; (software timeout loops contain code to jsr pc,idlefn where
+		; idlefn() is a global user provided function)
+
+	.macro	Exclude
+	mfps	-(sp)
+	mov	(sp),psave
+	bis	#340,(sp)
+	bic	#<^C<PRI>>&0377,(sp)
+	mtps	(sp)+
+	.endm	Exclude
+
+	.macro	Unexclude
+	mtps	psave
+	.endm	Unexclude
+
+.iif ne,DIAG,	.globl	idlefn
+
+.if eq,OS-1
+.iif gt,VECT-476, .error bad vector
+.endc
+.if ne,ONLYC
+.iif eq,SAC, .error must be SAC if ONLYC
+.endc
+
+INACTIVE=  0	; Software controller states
+IDLE=	   1
+INCHARGE=  2
+STANDBY=   3
+CADS=	   5
+
+GO=	1	; Control/status register bits
+OUT=	2
+SEL=	4
+ECC=	010
+IE=	0100
+LMR=	0200
+DONE=	0200
+CIC=	0400
+ATN=	01000
+EOI=	02000
+OCSW=	02000
+TCS=	04000
+DAV=	04000
+SRQIE=	010000
+SRQ=	010000
+INT=	020000
+DMAENAB=020000
+NEX=	040000
+REN=	040000
+IFC=	0100000
+
+DIR=	0	; Internal register addresses
+DOR=	0
+ISR1=	1
+IMR1=	1
+ISR2=	2
+IMR2=	2
+SPS=	3
+SPM=	3
+ADS=	4
+ADM=	4
+CPT=	5
+AUX=	5
+AD0=	6
+ADR=	6
+AD1=	7
+EOS=	7
+
+ERRIE=	 4	; Internal register bits
+ENDIE=	 020
+CPTIE=	 0200
+DMAI=	 020
+DMAO=	 040
+SRQS=	 0100
+RSV=	 0100
+TA=	 2
+LA=	 4
+LON=	 0100
+TON=	 0200
+DL=	 040
+DT=	 0100
+ARS=	 0200
+
+.CLKR=	040	; Hidden register addresses & offsets
+.PPR=	0140
+.AUXA=	0200
+.AUXB=	0240
+CLKR=	0
+PPR=	1
+AUXA=	2
+AUXB=	3
+
+U=	020	; Hidden register bits
+BIN=	020
+S=	010
+REOS=	4
+HLDE=	2
+HLDA=	1
+CPTENAB=1
+PACS=	1	; Software status bits
+MON=	2
+
+
+IST=	011	; Special interface functions
+NIST=	1
+VSC=	017
+NVSC=	7
+SEOI=	6
+FH=	3
+IR=	2
+PON=	0
+
+OK=	    1
+ASYNOP=	    0	; Error codes
+ENONE=	   -1	; No command byte available (READCOMMAND)
+ECACFLT=   -2	; ATN not unasserted after IFC sent (bus problem)
+ENOTCAC=   -3	; Not Active Controller for operation requiring CAC (software problem)
+ENOTSAC=   -4	; Not System Controller for operation requiring SAC (software problem)
+EIFCLR=	   -5	; IFC caused operation to abort (bus problem)
+ETIMO=	   -6	; Operation did not complete within allotted time (bus problem)
+ENOFUN=	   -7	; Non-existent function code (software problem)
+ENOIBDEV=  -9.	; No Listeners addressed or no devices connected (bus problem)
+EIDMACNT= -10.	; Internal DMA completed without bcr going to 0 (hardware problem)
+ENOPP=	  -11.	; PP operation attempted on three-state GPIB (software problem)
+EITIMO=	  -12.	; Internal DMA did not complete within allotted time (hardware problem)
+EINEXM=	  -13.	; Internal DMA aborted due to non-existent memory (software/hardware problem)
+ENEXMEM=  -14.	; GPIB DMA aborted due to non-existent memory (software/hardware problem)
+ECNTRS=	  -15.	; Bar and bcr are inconsistent following GPIB DMA (hardware problem)
+ECADS=	  -18.	; ATN not unasserted after control passed (bus problem)
+
+RQCSTB=	 <RSV+1>; Service request status bytes
+RQTSTB=	 <RSV+2>
+RQLSTB=	 <RSV+4>
+
+RQC=	1	; Asynchronous op codes
+CAC=	2
+TAC=	3
+LAC=	4
+WSRQ=	5
+
+TCT=	011	; GPIB multiline messages
+PPC=	5
+PPU=	025
+SCG=	0140
+
+IN=	0
+ITIMO=	25	; Internal loopcount timeout
+GTIMO=	10.	; Default GPIB timeout in seconds
+SECOND= 25000.	; Loop constant for one second
+BSIZ=	040	; Monitor buffer size
+
+RD=	<DMAENAB+TCS+IN+GO>
+WT=	<DMAENAB+TCS+OUT+GO>
+RDIR=	<DMAENAB+IN+SEL+GO>
+WTIR=	<DMAENAB+OUT+SEL+GO>
+
+bcr=	   0		;struct	 ibv2 {
+bar=	   2		;	int	bcr, bar, csr;	/* Unibus registers	*/
+csr=	   4		;	char	ccf,xba;
+ccf=	   6		;	char	hidden[4];	/* Hidden registers	*/
+xba=	   7.		;
+hidden=	   8.
+internal= 12.		;	char	internal[8];	/* Internal registers	*/
+cstate=	  20.		;	char	cstate;
+istr=	  21.		;	char	istr;
+op=	  22.		;	char	op;
+ans=	  24.		;	int	ans;
+timo=	  26.		;	int	timo;		/* Watchdog timer	*/
+owner=	  28.		;	int	owner;		/* GPIB owning process	*/
+rdbcr=	  30.		;	int	rdbcr, rdbar, rdcsr;
+rdbar=	  32.
+rdcsr=	  34.
+rdintern= 36.		;	char	rdinternal[8];
+.if eq,ONLYC
+mbuf=	  44.		;	char	mbuf[BSIZ];
+iidx=	  44.+BSIZ	;	int	iidx, oidx, cnt;
+oidx=	  46.+BSIZ
+cnt=	  48.+BSIZ
+.endc
+			;	} ib;
+.iif eq,ONLYC, IBSLEN= 50.+BSIZ
+.iif ne,ONLYC, IBSLEN= 44.
+
+r0=	%0
+r1=	%1
+r2=	%2
+r3=	%3
+r4=	%4
+r5=	%5
+sp=	%6
+pc=	%7
+
+	.macro	SU instr src dst
+	instr	ibv2+src,@#UADDR+dst
+	.endm	SU
+
+	.macro	US instr src dst
+	instr	@#UADDR+src,ibv2+dst
+	.endm	US
+
+	.macro	xU instr src dst
+	instr	src,@#UADDR+dst
+	.endm	xU
+
+	.macro	Ux instr src dst
+.if nb,dst
+	instr	@#UADDR+src,dst
+.iff
+	instr	@#UADDR+src
+.endc
+	.endm	Ux
+
+	.macro	SS instr src dst
+	instr	ibv2+src,ibv2+dst
+	.endm	SS
+
+	.macro	xS instr src dst
+	instr	src,ibv2+dst
+	.endm	xS
+
+	.macro	Sx instr src dst
+.if nb,dst
+	instr	ibv2+src,dst
+.iff
+	instr	ibv2+src
+.endc
+	.endm	Sx
+
+	.macro	addr loc dst
+	mov	pc,dst
+	add	#loc-.,dst
+	.endm	addr
+
+	.macro	Xfer rw a n r
+    xU	mov	#-<n*0400>+<r&7>,bcr
+	addr	ibv2+a,r1
+    xU	mov	r1,bar	;convert to physical address!
+    Sx	mov	csr,r0
+	bic	#^C<REN+SRQIE+EOI+ATN+CIC>,r0
+	bis	#rw,r0
+    xU	mov	r0,csr
+	jsr	pc,iwait
+	.endm	Xfer
+
+	.macro	cjmp t f
+	.macro	j't' a ?b
+	b'f'	b
+	jmp	a
+b:
+	.endm	j't'
+	.macro	j'f' a ?b
+	b't'	b
+	jmp	a
+b:
+	.endm	j'f'
+	.endm	cjmp
+	.irp	j,<<eq,ne>,<cc,cs>>
+	cjmp	j
+	.endr
+
+NFNS=	17.
+
+begin= .
+	.globl	gpib
+gpib:
+
+.if ne,BASIC
+	.globl	$arger, $bomb, $find, $alc, $store, $dealc, $msg
+	cmpb	1(r5),#202
+	jne	gpib0
+	mov	@-2(r5),r4
+	bic	#200,r4
+	cmp	r4,#1023
+	bne	argerr
+	mov	@2(r5),r0
+	cmp	r0,#NFNS
+	jcc	b9$
+	cmpb	@r5,bcntbl(r0)
+	bne	argerr
+	movb	fcntbl(r0),fblk
+	mov	2(r5),fblk+2
+	mov	-2(r5),r4
+	asl	r0
+	jmp	@pretbl(r0)
+
+b.write:mov	4(r4),r4
+	bic	#200,r4
+	cmp	r4,#1023
+	bne	argerr
+	mov	6(r5),fblk+10
+	mov	-2(r5),r4
+b.command:
+	mov	2(r4),r4
+	bit	#1,r4
+	bne	argerr
+	mov	(r4)+,r1
+	mov	@r4,r0
+	bic	#200,r1
+	cmp	r1,#1100
+	bne	argerr
+	mov	#100,r1
+	jsr	pc,$find
+	mov	r0,fblk+4
+	mov	#fblk+16,fblk+6
+	mov	r1,fblk+16
+	br	b.call
+
+argerr: jmp	$arger
+
+b.read: tst	(r4)+
+	mov	(r4)+,r3
+	bit	#1,r3
+	bne	argerr
+	cmp	(r3)+,#1100
+	bne	argerr
+	mov	@r3,strref
+	mov	#tmpstr,fblk+4
+	mov	#fblk+6,r3
+	mov	r5,r2
+	add	#6,r2
+	mov	#3,r0
+	br	b.t2
+b.setstatus: b.monitor: b.setparm:
+	mov	#1,r0
+	tst	(r4)+
+	mov	#fblk+4,r3
+	mov	r5,r2
+	cmp	(r2)+,(r2)+
+b.t2:	mov	(r4)+,r1
+	bic	#200,r1
+	cmp	r1,#1023
+	bne	argerr
+	mov	(r2)+,(r3)+
+	dec	r0
+	bgt	b.t2
+	br	b.call
+b.parallel:
+	cmp	2(r4),#1023
+	bne	argerr
+	;br	b.call
+
+b.call: mov	r5,-(sp)
+	mov	#fblk,r5
+	jsr	pc,gpib0
+	mov	(sp)+,r5
+	cmp	r0,#ENONE
+	blt	b10$
+	mov	@2(r5),r1
+	asl	r1
+	jmp	@postbl(r1)
+
+b.rd:	tst	r0
+	bpl	1$
+	clr	r0
+1$:	mov	#100,r1
+	jsr	pc,$alc
+	bcs	b11$
+	mov	#tmpstr,r3
+2$:	dec	r1
+	bmi	3$
+	movb	(r3)+,(r0)+
+	br	2$
+3$:	mov	sp,r0
+	mov	strref,r1
+	jsr	pc,$store
+	jsr	pc,$dealc
+	rts	pc
+b.pp: b.rc: b.sr:
+	mov	r0,@4(r5)
+b.rtn:	rts	pc
+b9$:	mov	#ENOFUN,r0
+b10$:	com	r0
+b11$:	asl	r0
+	mov	bemsg(r0),r1
+	jsr	pc,$bomb
+	;no return
+
+bemsg:	bemsg1, emsg2, emsg3, emsg4, emsg5, emsg6, emsg7, emsg8
+	emsg9, emsg10, emsg11, emsg12, emsg13, emsg14, emsg15
+bemsg1: .asciz	/alc--no space/
+emsg2:	.asciz	/CAC conflict/
+emsg3:	.asciz	/not CAC/
+emsg4:	.asciz	/not SAC/
+emsg5:	.asciz	/IFC abort/
+emsg6:	.asciz	/timeout/
+emsg7:	.asciz	/bad fctn code/
+emsg8:	.asciz	/?/
+emsg9:	.asciz	/no listeners/
+emsg10: .asciz	/bcr error/
+emsg11: .asciz	/no PP/
+emsg12: .asciz	/ir timeout/
+emsg13: .asciz	/ir nex memory/
+emsg14: .asciz	/nex memory/
+emsg15: .asciz	/bcr-bar error/
+	.even
+	.csect	gpib
+tmpstr: .blkb	256.
+strref: 0
+fblk:	.blkw	8.
+	.csect
+bcntbl: .byte	2, 3, 5, 1, 1, 1, 1, 2, 1, 2, 2, 2, 2, 2, 1
+fcntbl: .byte	3, 4, 5, 1, 1, 1, 1, 1, 1, 2, 2, 1, 2, 1, 1
+pretbl: b.command, b.write, b.read, b.call, b.call, b.call, b.call
+	b.parallel, b.call, b.setstatus, b.monitor, b.call, b.setparm
+	b.call, b.call
+postbl: b.rtn, b.rtn, b.rd, b.rtn, b.rtn, b.rtn, b.rtn, b.pp, b.rtn
+	b.rtn, b.rtn, b.rc, b.rtn, b.sr, b.rtn
+gpib0:
+.endc
+
+				;gpib(f,a1,a2,a3,a4)
+	Exclude			;	Exclude;
+    Sx	clr	ans		;	ib.ans= 0;
+    Sx	tstb	cstate		;	if(ib.cstate==INACTIVE && (x=init())<0) goto quit
+	bne	1$
+	jsr	pc,init
+	bcs	9$
+1$:
+	mov	@2(r5),r0	;	if(f<0 || f>=NFNS) x= ENOFUN;
+	cmp	r0,#NFNS
+	bhis	8$
+	asl	r0		;	else x= (*ibfn[f])(a1,a2,a3,a4);
+	jsr	r0,@pc
+	add	#ibfn-.,r0
+	add	r0,@sp
+	add	@(sp)+,r0
+	jsr	pc,@r0
+	br	9$
+8$:	mov	#ENOFUN,r0
+9$:	Unexclude		;quit:	Unexclude;
+.if eq,ASYNCH
+	tst	r0		;	return x==ASYNOP? ibwait() : x;
+	beq	ibwait
+.iff
+	.globl	ibwait		;	return x;
+.endc
+	rts	pc
+
+ibfn:				;int (*ibfn[])()= {
+	command	       - ibfn	;	&command,	&write,		&read,		&transfer,
+	write	       - ibfn	;	&clear,		&remote,	&local,		&parallel,
+	read	       - ibfn	;	&passcontrol,	&setstatus,	&monitor,	&readcommand,
+	transfer       - ibfn	;	&setparameters, &testsrq,	&finish,	&status,
+	clear	       - ibfn	;	&spbyte };
+	remote	       - ibfn
+	local	       - ibfn
+	parallel       - ibfn
+	passcontrol    - ibfn
+	setstatus      - ibfn
+	monitor	       - ibfn
+	readcommand    - ibfn
+	setparameters  - ibfn
+	testsrq	       - ibfn
+	finish	       - ibfn
+	status	       - ibfn
+	spbyte	       - ibfn
+
+
+ibwait:				;ibwait()
+    Sx	mov	timo,r0
+	bne	2$		;	if((i= ib.timo)==0) i--;
+1$:	dec	r0
+2$:	mov	#SECOND,r1
+3$: Sx	tstb	op		;	while(ib.op && i)
+	beq	4$
+.iif ne,DIAG,	jsr	pc,idlefn
+	tst	r0		;		if(i>0) i--;
+	bmi	3$
+	beq	4$
+	dec	r1
+	bne	3$
+	br	1$
+4$:	Exclude			;	Exclude;
+    Sx	tstb	op		;	if(ib.op) ibstop();
+	beq	5$
+	jsr	pc,ibstop
+5$: Sx	mov	ans,r0		;	x= ib.ans;
+	Unexclude		;	Unexclude;
+	rts	pc		;	return x;
+
+
+init:				;init() char *cp;
+    Sx	clr	csr		;	ib.csr= 0; IB->csr= LMR;
+    xU	mov	#LMR,csr
+	addr	ibv2+hidden,r0	 ;	 cp= &ib.hidden[0];
+	movb	#.CLKR+5,(r0)+	;	*cp++= _CLKR | 5;
+	movb	#.PPR+U,(r0)+	;	*cp++= _PPR | U;
+	movb	#.AUXA,(r0)+	;	*cp++= _AUXA;
+				;	*cp++= _AUXB | TRI | CPT_ENAB;
+	movb	#.AUXB+TRI+CPTENAB,(r0)+
+				;	cp= &ib.internal[0];
+	clrb	(r0)+		;	*cp++= 0;
+	movb	#CPTIE+ERRIE,(r0)+;	*cp++= CPT_IE | ERR_IE;
+	clrb	(r0)+		;	*cp++= 0;
+	clrb	(r0)+		;	*cp++= 0;
+	movb	#EXT,(r0)+	;	*cp++= EXT;
+				;	*cp++= ib.hidden[CLKR];
+    Sx	movb	hidden+CLKR,(r0)+
+	movb	#ARS+MSA,(r0)+	;	*cp++= ARS | MSA;
+	clrb	(r0)+		;	*cp++= 0;
+
+	clr	(r0)+		;	ib.istr= ib.op= 0;
+	clr	(r0)+		;	ib.ans= 0;
+	mov	#GTIMO,(r0)+	;	ib.timo= GTIMO;
+	jsr	pc,irload	;	if((x=irload())<0) return x;
+	bcs	10$
+
+    xS	movb	#IDLE,cstate	;	ib.cstate= IDLE;
+	mov	#VECT,r1
+.if eq,OS-1
+	.mcall	.protect, .print, .exit
+	sub	#6,sp
+	.protect sp,r1
+	bcs	11$
+	add	#6,sp
+.endc
+	addr	ibint r0
+	mov	r0,(r1)+
+.iif eq,OS-1,	mov	#340,@r1
+.iif eq,OS,	mov	#PRI,@r1
+    xS	mov	#IE,csr		;	IB->csr= ib.csr= IE;
+    xU	mov	#IE,csr
+.if eq,ONLYC
+    Sx	clr	iidx		;	ib.iidx= ib.oidx= ib.cnt= 0;
+    Sx	clr	oidx
+    Sx	clr	cnt
+.endc
+	clr	r0		;	return 0;
+10$:	rts	pc
+.if eq,OS-1
+11$:	.print	#emsg
+	.exit
+emsg:	.asciz	/GPIB11V-2 vector conflict/
+	.even
+.endc
+
+
+ibstop:				;ibstop()
+    xS	bic	#DMAENAB+GO,csr ;	IB->csr= (ib.csr=& ~(DMA_ENAB|GO));
+    SU	mov	csr,csr
+    US	mov	bcr,rdbcr	;	ib.rdbcr= IB->bcr;
+    US	mov	bar,rdbar	;	ib.rdbar= IB->bar;
+.if eq,ONLYC
+	clr	r0
+	jsr	pc,rqs		;	if(rqs(0)>=0) ib.ans= ETIMO;
+	bcs	1$
+.endc
+    xS	mov	#ETIMO,ans
+1$: Sx	clrb	op		;	ib.op= 0;
+	rts	pc
+
+irload:				;irload() if((x=xfer(WTIR,&ib.internal[ISR1],7,ISR1))<0) return x;
+	Xfer WTIR internal+ISR1 7 ISR1
+	bcs	10$		;	ib.internal[AUX]= ib.hidden[AUXA];
+    SS	movb	hidden+AUXA,internal+AUX
+    xS	movb	#MA,internal+ADR;	ib.internal[ADR]= MA;
+				;	if((x=xfer(WTIR,&ib.internal[AUX],2,AUX))<0) return x;
+	Xfer WTIR internal+AUX 2 AUX
+	bcs	10$		;	if((x=xfer(WTIR,&ib.hidden[AUXB],1,AUX))<0) return x;
+	Xfer WTIR hidden+AUXB 1 AUX
+	bcc	lun0		;	return lun(ib.internal[ADM]);
+10$:	rts	pc
+
+
+lun:				;lun(newadm)	/* Note: rsv is cleared and not restored*/
+    xS	cmpb	r0,internal+ADM ;	if(ib.internal[ADM]==newadm) return OK;
+	beq	.9$
+    xS	movb	r0,internal+ADM ;	ib.internal[ADM]= newadm;
+lun0:
+    Sx	clrb	internal+AUX	;lun0:	ib.internal[AUX]= PON;
+				;	if((x=xfer(WTIR,&ib.internal[ADM],2,ADM))<0) return x;
+	Xfer WTIR internal+ADM 2 ADM
+	bcs	.10$
+.if eq,ONLYC
+.if ne,PPENAB
+	Xfer WTIR hidden+PPR 1 AUX
+	bcs	.10$		;	if((x=xfer(WTIR,&ib.hidden[PPR],1,AUX))<0) return x;
+    xS	bitb	#S,istr		;	if(ib.istr&S)
+	beq	.9$		;		return ldaux(IST);
+	mov	#IST,r0
+	jsr	pc,ldaux
+	bcs	.10$
+.endc
+.endc
+.9$:	clr	r0		;	return OK;
+	inc	r0
+.10$:	rts	pc
+command:			;command(bp,n) char bp[n];
+	jsr	pc,tcs.		;	if((x=tcs())<0)
+	bcc	3$
+.if eq,ONLYC
+	tst	@6(r5)		;		if(n && x==ENOTCAC)
+	beq	1$
+	cmp	r0,#ENOTCAC
+	bne	1$
+	mov	#RQCSTB,r0	;			if((x=rqs(RQC_STB))<0) return x;
+	jsr	pc,rqs
+	bcs	1$
+    xS	movb	#RQC,op		;			ib.op= RQC;
+	jsr	pc,ldr		;			ldr(bp,n);
+	clr	r0		;			return ASYNOP;
+1$:				;		else
+.endc
+	rts	pc		;		return x;
+3$:	mov	#TON,r0		;	if((x=lun(TON))<0) return x;
+	jsr	pc,lun
+	bcs	10$
+	tst	@6(r5)		;	if(n==0) return OK;
+	beq	9$
+    xS	movb	#CAC,op		;	ib.op= CAC;
+    xS	bic	#ECC,csr	;	return xfer(WT,bp,n,0);
+	jmp	wtxfer
+9$:	mov	#OK,r0
+10$:	rts	pc
+
+
+write:				;write(bp,n,mode) char bp[n];
+	mov	#TON,r0		;	if((x=gts(TON))<0)
+	jsr	pc,gts
+	bcc	3$
+.if eq,ONLYC
+	tst	@6(r5)		;		if(n && x==ENOTCAC)
+	beq	1$
+	cmp	r0,#ENOTCAC
+	bne	1$
+	jsr	pc,rdads	;			if((x=rdads())<0) return x;
+	bcs	10$
+    xS	bitb	#TA,rdintern+ADS;			if((ib.rdinternal[ADS]&TA)==0)
+	bne	3$
+	mov	#RQTSTB,r0	;				if((x=rqs(RQT_STB))<0) return x;
+	jsr	pc,rqs
+	bcc	3$		;		else
+1$:
+.endc
+	rts	pc		;		return x;
+3$:	tst	@6(r5)		;	if(n==0) return OK;
+	beq	9$
+    xS	movb	#TAC,op		;	ib.op= TAC;
+	bitb	#2,@10(r5)
+	beq	4$		;	return xfer(WT,bp,n,(mode&2? SEOI:0));
+    xS	bis	#ECC,csr
+    xS	movb	#SEOI,ccf
+	br	wtxfer
+4$: xS	bic	#ECC,csr
+	br	wtxfer
+9$:	mov	#OK,r0
+10$:	rts	pc
+
+wtxfer:
+    xS	bis	#WT,csr
+	jsr	pc,ldr
+	mov	#DMAO,r0
+	br	ibxfer
+rdxfer:
+    xS	bic	#OUT,csr
+    xS	bis	#RD,csr
+	jsr	pc,ldr
+	mov	#DMAI,r0
+ibxfer:				;xfer(rw,bp,n,ccfn) char bp[n];
+				;	if(ccfn) IB->ccf= ib.ccf= ccfn; ib.csr=| ECC;
+				;	else ib.csr=& ~ECC;
+				;	ldr(bp,n); ib.csr= ib.csr&~OUT | rw;
+ibxfr0:
+    xS	cmpb	r0,internal+IMR2;	x= rw&OUT? DMAO:DMAI;
+	beq	1$		;	if(x!=ib.internal[IMR2])
+    xS	movb	r0,internal+IMR2;		ib.internal[IMR2]= x;
+	Xfer WTIR internal+IMR2 1 IMR2
+	bcc	1$		;		if((x=xfer(WTIR,&ib.internal[IMR2],1,IMR2))<0)
+    Sx	clr	op		;			ib.op= 0;
+	br	10$		;			return x;
+1$: SU	mov	bcr,bcr		;	IB->bcr= ib.bcr;
+    SU	mov	bar,bar		;	IB->bar= ib.bar;
+    SU	mov	ccf,ccf		;	IB->ccf= ib.ccf;IB->xba= ib.xba;
+    SU	mov	csr,csr		;	IB->csr= ib.csr;
+	clr	r0		;	return ASYNOP;
+10$:	rts	pc
+
+
+read:				;read(bp,n,mode,eod) char bp[n];
+	mov	#LON,r0		;	if((x=gts(LON))<0)
+	jsr	pc,gts
+	bcc	3$
+.if eq,ONLYC
+	tst	@6(r5)		;		if(n && x==ENOTCAC)
+	beq	1$
+	cmp	r0,#ENOTCAC
+	bne	1$
+	jsr	pc,rdads	;			if((x=rdads())<0) return x;
+	bcs	10$
+    xS	bitb	#LA,rdintern+ADS;			if((ib.rdinternal[ADS]&LA)==0)
+	bne	3$
+	mov	#RQLSTB,r0	;				if((x=rqs(RQL_STB))<0) return x;
+	jsr	pc,rqs
+	bcc	3$		;		else
+1$:
+.endc
+	rts	pc		;		return x;
+3$:	tst	@6(r5)		;	if(n==0) return OK;
+	beq	9$
+	movb	@10(r5),r0	;	if(mode&2) ib.hidden[AUXA]=| REOS | (mode&1? 0:BIN);
+	bitb	#2,r0
+	beq	4$
+    xS	bisb	#REOS,hidden+AUXA
+    xS	movb	@12(r5),internal+EOS
+	bitb	#1,r0		;		ib.internal[EOS]= eod;
+	bne	4$
+    xS	bisb	#BIN,hidden+AUXA
+4$:	bitb	#4,r0		;	if(mode&4) ib.internal[IMR1]=& ~END_IE;
+	beq	41$
+    xS	bicb	#ENDIE,internal+IMR1
+	br	42$		;	else ib.internal[IMR1]=| END_IE;
+41$:xS	bisb	#ENDIE,internal+IMR1
+    Sx	cmpb	cstate,#STANDBY ;		if(ib.cstate==STANDBY)
+	bne	42$
+    xS	bisb	#HLDE,hidden+AUXA;			ib.hidden[AUXA]=| HLDE;
+42$:SS	movb	hidden+AUXA,internal+AUX
+				;	ib.internal[AUX]= ib.hidden[AUXA];
+	Xfer WTIR internal+IMR1 7 IMR1
+	bcs	10$		;	if((x=xfer(WTIR,&ib.internal[IMR1],7,IMR1))<0) return x;
+    xS	movb	#LAC,op		;	ib.op= LAC;
+    Sx	movb	hidden+AUXA,r0	;	if(ib.cstate==STANDBY) x= ib.hidden[AUXA]= ib.hidden[AUXA]&~HLDE|HLDA;
+    Sx	cmpb	cstate,#STANDBY ;	else x= 0;
+	bne	5$		;	return xfer(RD,bp,n,x);
+    xS	bis	#ECC,csr
+	bic	#HLDE,r0
+	bis	#HLDA,r0
+    xS	movb	r0,ccf
+    xS	movb	r0,hidden+AUXA
+	br	6$
+5$: xS	bic	#ECC,csr
+6$:	jmp	rdxfer
+9$:	mov	#OK,r0
+10$:	rts	pc
+
+
+transfer:			;transfer()
+	mov	#EXT,r0		;	if((x=gts(EXT))<0) return x;
+	jsr	pc,gts
+	bcs	10$
+	mov	#OK,r0		;	return OK;
+10$:	rts	pc
+
+clear:				;clear()
+	jsr	pc,unhold	;	if((x=unhold())<0) return x;
+	bcs	10$
+.if ne,SAC
+    Sx	mov	csr,r0		;	IB->csr= ib.csr | IFC;
+	bis	#IFC,r0
+    xU	mov	r0,csr
+	jsr	pc,wait100	;	wait100us();
+    xU	bit	#ATN,csr	;	if(IB->csr&ATN)
+	beq	1$
+	mov	#ECACFLT,r0	;		return ECACFLT;
+	br	10$
+1$: xS	movb	#INCHARGE,cstate;	ib.cstate= INCHARGE;
+    xS	bis	#ATN+SRQIE+CIC,csr
+    SU	mov	csr,csr		;	IB->csr= (ib.csr=| ATN | SRQ_IE | CIC);
+	mov	#TON,r0		;	return lun(TON);
+	jmp	lun
+.iff
+	mov	#ENOTSAC,r0	;	return ENOTSAC;
+.endc
+10$:	rts	pc
+
+
+remote:				;remote()
+.if ne,SAC
+    xS	bis	#REN,csr	;	IB->csr= (ib.csr=| REN);
+    SU	mov	csr,csr
+	mov	#OK,r0		;	return OK;
+.iff
+	mov	#ENOTSAC,r0	;	return ENOTSAC;
+.endc
+	rts	pc
+
+local:				;local()
+.if ne,SAC
+    xS	bic	#REN,csr	;	IB->csr= (ib.csr=& ~REN);
+    SU	mov	csr,csr
+	mov	#OK,r0		;	return OK;
+.iff
+	mov	#ENOTSAC,r0	;	return ENOTSAC;
+.endc
+	rts	pc
+
+parallel:			;parallel()
+.if ne,PPENAB
+	jsr	pc,tcs.		;	if((x=tcs())<0) return x;
+	bcs	10$
+	mov	#LON,r0		;	if((x=lun(LON))<0) return x;
+	jsr	pc,lun
+	bcs	10$
+    xS	bis	#EOI,csr	;	IB->csr= (ib.csr=| EOI);
+    SU	mov	csr,csr
+	Xfer RDIR rdintern+CPT 1 CPT
+	bcs	10$		;	if((x=xfer(RDIR, &ib.rdinternal[CPT],1,CPT))<0) return x;
+    xS	bic	#EOI,csr	;	IB->csr= (ib.csr=& ~EOI);
+    SU	mov	csr,csr		;	IB->csr= ib.csr;
+	mov	#400,r0		;	return ib.rdinternal[CPT] | 0400;
+    Sx	bisb	rdintern+CPT,r0
+.iff
+	mov	#ENOPP,r0	;	return ENOPP;
+.endc
+10$:	rts	pc
+
+passcontrol:			;passcontrol()
+.if eq,ONLYC
+    Sx	cmpb	cstate,#INCHARGE;	if(ib.cstate!=INCHARGE)
+	beq	1$
+	mov	#ENOTCAC,r0	;		return ENOTCAC;
+	br	10$
+1$:	movb	#EXT,r0		;	if((x=lun(EXT))<0) return x;
+	jsr	pc,lun
+	bcs	10$
+    xS	bic	#SRQIE+ATN+CIC,csr
+    SU	mov	csr,csr		;	IB->csr= (ib.csr=& ~(SRQ_IE | ATN | CIC));
+    xS	movb	#IDLE,cstate	;	ib.cstate= IDLE;
+	mov	#OK,r0		;	return OK;
+.iff
+	mov	#ENOIBDEV,r0	;	return ENOIBDEV;
+.endc
+10$:	rts	pc
+
+setstatus:			;setstatus(s)
+.if eq,ONLYC
+.if ne,PPENAB
+    xS	bitb	#S,istr		;	if((ib.istr&S) ^^ s)
+	bne	2$
+	tst	@4(r5)
+	beq	9$
+    xS	bisb	#S,istr
+	mov	#IST,r0
+	br	5$
+2$:	tst	@4(r5)
+	bne	9$
+    xS	bicb	#S,istr
+	mov	#NIST,r0
+5$:	jsr	pc,ldaux	;		return ldaux((ib.istr=^ S)? IST : NIST);
+	bcs	10$
+.endc
+.endc
+9$:	mov	#OK,r0		;	return OK;
+10$:	rts	pc
+
+monitor:			;monitor(m)
+.if eq,ONLYC
+	tst	@4(r5)		;	if(m) ib.istr=| MON;
+	beq	1$
+    xS	bisb	#MON,istr
+	br	5$
+1$: xS	bicb	#MON,istr	;	else ib.istr=& ~MON;
+5$:
+.endc
+	mov	#OK,r0		;	return OK;
+	rts	pc
+
+readcommand:			;readcommand()
+.if eq,ONLYC
+	clr	r0
+    Sx	tst	cnt		;	if(ib.cnt<=0) return ENONE;
+	ble	9$
+    Sx	dec	cnt		;	ib.cnt--;
+	addr	ibv2+mbuf,r1	 ;	 x= ib.mbuf[ib.oidx++];
+    Sx	add	oidx,r1
+	bisb	@r1,r0
+    Sx	inc	oidx
+    Sx	cmp	oidx,#BSIZ	;	if(ib.oidx>=BSIZ) ib.oidx= 0;
+	blt	5$
+    Sx	clr	oidx
+5$:	bis	#400,r0		;	return x|0400;
+	br	10$
+9$:	dec	r0
+10$:	rts	pc
+.iff
+	mov	#ENONE,r0	;	return ENONE;
+	rts	pc
+.endc
+
+setparameters:			;setparameters(t)
+    xS	mov	@4(r5),timo	;	ib.timo= t;
+	mov	#OK,r0		;	return OK;
+	rts	pc
+
+testsrq:			;testsrq()
+	mov	#1,r0		;	if(IB->csr&SRQ) return OK;
+    xU	bit	#SRQ,csr
+	bne	10$
+	neg	r0
+    xS	bit	#CIC,csr	;	if(ib.csr&CIC) IB->csr= (ib.csr=| SRQ_IE);
+	beq	10$
+    xS	bis	#SRQIE,csr
+    SU	mov	csr,csr
+
+	tst	@4(r5)		;      if (wait)  {
+	beq	10$		;
+    xS	movb	#WSRQ,op	;		ib.op = WSRQ
+	clr	r0		;		return ASYNOP;	}
+10$:	rts	pc		;	return ENONE;
+
+spbyte:
+.if eq, ONLYC
+	clr	r0
+	jsr	pc,rqs
+	bcs	10$
+	mov	@4(r5),r0
+	jsr	pc,rqs
+	bcs	10$
+.endc
+	mov	#OK,r0
+10$:	rts	pc
+
+status:				;status (buf, count)
+	mov	r2,-(sp)	; (save r2)
+	addr	ibv2,r2
+	mov	r2,r0
+	mov	@6(r5),r1
+	cmp	r1,#IBSLEN
+	blos	1$
+	mov	#IBSLEN,r1
+1$:	mov	r1,-(sp)	; (this will be the return value)
+	add	r0,r1
+	mov	4(r5),r0
+2$:	cmp	r2,r1
+	beq	3$
+	movb	(r2)+,(r0)+
+	br	2$
+3$:	mov	(sp)+,r0	; return count;
+	bne	4$
+	mov	#OK,r0
+4$:	mov	(sp)+,r2	; (replace r2)
+	rts	pc
+
+finish:				;finish()
+    Sx	clrb	cstate		;	ib.cstate= INACTIVE;
+    Sx	clr	csr		;	ib.csr= 0;
+    xU	mov	#LMR,csr	;	IB->csr= LMR;
+	mov	#OK,r0		;	return OK;
+	rts	pc
+ibint:				;ibint()
+.if eq,OS-1
+	.mcall	.inten
+	.inten	<PRI/32.>,PIC
+	mov	r0,r4
+	mov	r1,r5
+	jsr	pc,ibint0
+	mov	r5,r1
+	mov	r4,r0
+	rts	pc
+.iff
+	mov	r0,-(sp)
+	mov	r1,-(sp)
+	jsr	pc,ibint0
+	mov	(sp)+,r1
+	mov	(sp)+,r0
+	rti
+.endc
+ibint0:
+    US	mov	bcr,rdbcr	;ib.rdbcr= IB->bcr;
+    US	mov	bar,rdbar	;ib.rdbar= IB->bar;
+    US	mov	csr,rdcsr	;ib.rdcsr= IB->csr;
+.if eq,SAC
+    Sx	tst	rdcsr		;if(ib.rdcsr&IFC)
+	bpl	5$
+    xS	bic	#DMAENAB+SRQIE+ATN+CIC+GO,csr
+    SU	mov	csr,csr		;	IB->csr= (ib.csr=& ~(DMA_ENAB|SRQ_IE|ATN|CIC|GO));
+    Sx	tstb	cstate		;	if(ib.cstate!=INACTIVE)
+	beq	4$
+    xS	movb	#IDLE,cstate	;		ib.cstate= IDLE;
+				;		ib.hidden[AUXA]= _AUXA;
+    xS	movb	#.AUXA,hidden+AUXA
+    xS	movb	#FH,internal+AUX;		ib.internal[AUX]= FH;
+    xS	movb	#EXT,internal+ADM;		ib.internal[ADM]= EXT;
+    Sx	clrb	internal+IMR2	;		ib.internal[IMR2]= 0;
+    Sx	clrb	internal+SPM	;		ib.internal[SPM]= 0;
+	jsr	pc,irload	;		if(irload()>=0) ib.ans= EIFCLR;
+	bcs	3$
+	movb	#EIFCLR,r0
+3$: xS	mov	r0,ans
+4$: Sx	clrb	op		;	ib.op= 0;
+	rts	pc		;	return;
+5$:
+.endc
+chksrq:				;if((IB->csr&SRQ) && (ib.csr&SRQ_IE))
+    xU	bit	#SRQ,csr
+	beq	5$
+    xS	bit	#SRQIE,csr
+	beq	5$
+    xS	bic	#SRQIE,csr	;	IB->csr= (ib.csr=& ~SRQ_IE) & ~GO;
+    Sx	mov	csr,r0
+	bic	#GO,r0
+    xU	mov	r0,csr
+    Sx	cmpb	op,#WSRQ
+	bne	55$
+	mov	#OK,r0
+	jmp	quit
+55$:Sx	tst	owner		;	if(ib.owner) psignal(ib.owner,SRQINT);
+	beq	5$
+	; signal owner
+5$:
+chkint:
+    xU	bit	#INT,csr	;if(IB->csr&INT)
+	jeq	chkdone
+    Ux	mov	bcr,r1		;x= IB->bcr;
+    Sx	mov	csr,r0		;	IB->csr= ib.csr & ~(DMA_ENAB|GO);
+	bic	#DMAENAB+GO,r0
+    xU	mov	r0,csr
+    US	mov	csr,rdcsr	;ib.rdcsr= IB->csr;
+    US	mov	bcr,rdbcr	;ib.rdbcr= IB->bcr;
+    Sx	tst	rdbcr
+	bne	14$
+	tst	r1
+	beq	15$
+14$:
+    Sx	dec	rdbcr
+15$:
+    US	mov	bar,rdbar	;ib.rdbar= IB->bar;
+	Xfer RDIR rdintern+ISR1 5 ISR1
+	jcs	quit		;	if((x=xfer(RDIR,&ib.rdinternal[ISR1],5,ISR1))<0) goto quit;
+    xS	bitb	#ERRIE,rdintern+ISR1
+	beq	1$		;	if(ib.rdinternal[ISR1]&ERR_IE) ib.ans= ENOIBDEV;
+    xS	mov	#ENOIBDEV,ans
+	jmp	chkdone
+1$:
+.if eq,ONLYC
+				;	else if(ib.rdinternal[ISR1]&CPT_IE)
+    xS	bitb	#CPTIE,rdintern+ISR1
+	beq	10$
+    Sx	movb	rdintern+CPT,r0 ;		mbfsto(ib.rdinternal[CPT]);
+	jsr	pc,mbfsto
+.if ne,PPENAB
+    xS	bitb	#PACS,istr	;		if((ib.istr&PACS) && ib.rdinternal[CPT]>=SCG)
+	beq	2$
+    xS	bicb	#PACS,istr	;			ib.istr=& ~PACS;
+	cmpb	r0,#SCG
+	blt	2$
+    xS	movb	r0,hidden+PPR	;			ib.hidden[PPR]= ib.rdinternal[CPT];
+	br	8$		;			goto lpe;
+.endc
+2$:	cmpb	r0,#TCT		;		switch(ib.rdinternal[CPT])
+	bne	5$		;			case TCT:
+    xS	bitb	#TA,rdintern+ADS;				if((ib.rdinternal[ADS]&TA)==0) break;
+	beq	9$
+    xS	movb	#CADS,cstate	;				ib.cstate = CADS;
+	jsr	pc,valid	;				if((x=valid())<0) goto quit;
+	jcs	quit
+	br	chkdone
+5$:
+.if ne,PPENAB
+	cmpb	r0,#PPC		;			case PPC:
+	bne	6$
+    xS	bitb	#LA,rdintern+ADS;				if(ib.rdinternal[ADS]&LA)
+	beq	6$
+    xS	bisb	#PACS,istr	;					ib.istr=| PACS;
+	br	9$		;					break;
+6$:	cmpb	r0,#PPU		;			case PPU:
+	bne	9$		;				ib.hidden[PPR]= _PPR | U;
+    xS	movb	#.PPR+U,hidden+PPR
+8$:	Xfer WTIR hidden+PPR 1 AUX
+	jcs	quit		;			lpe:	if((x=xfer(WTIR,&ib.hidden[PPR],1,AUX))<0) goto quit;
+				;				break;
+.endc
+9$:	jsr	pc,valid	;		if((x=valid())<0) goto quit;
+	jcs	quit
+10$:
+.endc
+    xS	bitb	#ENDIE,internal+IMR1;	if(ib.internal[IMR1]&END_IE)
+	beq	chkdone		;		ib.internal[IMR1]=& ~END_IE;
+    xS	bicb	#ENDIE,internal+IMR1
+	Xfer WTIR internal+IMR1 1 IMR1
+	jcs	quit		;		if((x=xfer(WTIR,&ib.internal[IMR1],1,IMR1))<0) goto quit;
+chkdone:			;chkdone:
+    Ux	tstb	csr		;if((IB->csr&DONE) && (ib.csr&GO))
+	bpl	chktct
+    xS	bit	#GO,csr
+	beq	chktct
+    Sx	dec	csr		;	ib.csr=& ~GO;
+    xS	bit	#NEX,rdcsr	;	if(ib.rdcsr&NEX) ib.ans= ENEXMEM;
+	beq	2$
+    xS	mov	#ENEXMEM,ans
+2$:
+.if eq,ONLYC
+	clr	r0		;	if((x=rqs(0))<0) goto quit;
+	jsr	pc,rqs
+	bcs	quit
+.endc
+    Sx	mov	rdbcr,r0	;	x= ib.rdbcr - ib.bcr;	/* number of bytes transferred */
+    Sx	sub	bcr,r0
+    SS	sub	bar,rdbar	;	if(ib.rdbar - ib.bar != x) x= ECNTRS;
+    Sx	cmp	rdbar,r0
+	beq	3$
+	mov	#ECNTRS,r0
+3$: Sx	tst	ans		;	if(ib.ans==0)
+	bne	wake
+quit:				;quit:		ib.ans= x;
+    xS	mov	r0,ans
+wake:
+    Sx	clrb	op		;	ib.op= 0;
+	rts	pc
+chktct:
+.if eq,ONLYC
+    Sx	cmpb	op,#RQC		;else if(ib.op==RQC && (IB->csr&CIC))
+	bne	10$
+    xU	bit	#CIC,csr
+	beq	10$
+	mov	#TON,r0		;	if((x=lun(TON))<0) goto quit;
+	jsr	pc,lun
+	bcs	quit
+    xS	movb	#CAC,op		;	ib.op= CAC;
+	mov	#DMAO,r0
+    xS	bic	#ECC,csr	;	if((x=xfer(WT,ib.bar,ib.bcr,0))<0)
+    xS	bis	#WT,csr
+	jsr	pc,ibxfr0
+	bcs	quit		;		goto quit;
+.endc
+10$:	rts	pc		;return;
+
+gts:				;gts(newadm)
+	mov	r0,-(sp)
+	jsr	pc,unhold	;	if((x=unhold())<0) return x;
+	bcs	2$
+	jsr	pc,uncads
+2$:	mov	(sp)+,r1
+	bcs	10$
+	mov	r1,r0
+    Sx	cmpb	cstate,#STANDBY ;	if(ib.cstate==STANDBY)
+	bne	1$
+    Sx	cmpb	internal+ADM,r0 ;		return (ib.internal[ADM]==newadm)? 0:ENOIBDEV;
+	beq	9$
+	mov	#ENOIBDEV,r0
+	br	12$
+1$: Sx	cmpb	cstate,#IDLE	;	if(ib.cstate==IDLE) return ENOTCAC;
+	beq	11$
+	jsr	pc,lun		;	if((x=lun(newadm))<0) return x;
+	bcs	10$
+    xS	bic	#ATN,csr	;	IB->csr= (ib.csr=& ~ATN);
+    SU	mov	csr,csr
+    xS	movb	#STANDBY,cstate ;	ib.cstate= STANDBY;
+9$:	clr	r0
+10$:	rts	pc
+11$:	mov	#ENOTCAC,r0
+12$:	sec
+	rts	pc
+
+tcs.:				;tcs()
+	jsr	pc,uncads
+	bcs	10$
+    Sx	cmpb	cstate,#INCHARGE;	if(ib.cstate==INCHARGE) return 0;
+	beq	9$
+    Sx	cmpb	cstate,#IDLE	;	if(ib.cstate==IDLE) return ENOTCAC;
+	beq	11$
+    xS	bis	#ATN,csr	;	IB->csr= (ib.csr=| ATN);
+    SU	mov	csr,csr
+    xS	movb	#INCHARGE,cstate;	ib.cstate= INCHARGE;
+	br	unhold		;	return unhold();
+9$:	clr	r0
+10$:	rts	pc
+11$:	mov	#ENOTCAC,r0
+	sec
+	rts	pc
+
+unhold:				;unhold()
+    xS	bitb	#HLDE+HLDA,hidden+AUXA
+	beq	9$		;	if(ib.hidden[AUXA]&(HLDE|HLDA))
+				;		ib.hidden[AUXA]= _AUXA;
+    xS	movb	#.AUXA,hidden+AUXA
+	mov	#FH,r0
+	jsr	pc,ldaux
+	bcs	10$
+	Xfer WTIR hidden+AUXA 1 AUX
+	bcs	10$		;		if((x=ldaux(FH))<0 || (x=xfer(WTIR,&ib.hidden[AUXA],1,AUX))<0) return x;
+9$:	clr	r0		;	return 0;
+10$:	rts	pc
+
+
+uncads:				; uncads ()
+.if eq,ONLYC
+    xS	cmpb	#CADS,cstate	;	if (ib.cstate == CADS)
+	bne	1$		;
+    xU	bit	#ATN,csr	;		if (IB->csr & ATN)
+	beq	2$		;
+	mov	#ECADS,r0	;			return ECADS;
+	sec			;
+	rts	pc		;		else  {
+2$: xS	movb	#INCHARGE,cstate;			ib.cstate = INCHARGE;
+    xS	bis	#ATN+SRQIE+CIC,csr;			  ib.csr |= ATN | SRQIE | CIC;
+    SU	mov	csr,csr		;			IB->csr = ib.csr
+1$:				;
+.endc
+	clr	r0		;		}
+	rts	pc		;	return 0;
+				;	}
+
+ldr:	mov	@6(r5),r0	;ldr(bp,n) char bp[n];
+	neg	r0		;	ib.bcr= -n;
+    xS	mov	r0,bcr
+    xS	mov	4(r5),bar	;	ib.bar= bp;
+	rts	pc
+
+.if eq,ONLYC
+mbfsto:				;mbfsto(c)
+    xS	bitb	#MON,istr	;	if((ib.istr&MON)==0) return;
+	beq	10$
+    Sx	cmp	cnt,BSIZ	;	if(ib.cnt>=BSIZ) return;
+	bge	10$
+    Sx	inc	cnt		;	ib.cnt++;
+	addr	ibv2+mbuf,r1	;	ib.mbuf[ib.iidx++]= c;
+    Sx	add	iidx,r1
+	movb	r0,@r1
+    Sx	inc	iidx
+    Sx	cmp	iidx,#BSIZ	;	if(ib.iidx>=BSIZ) ib.iidx= 0;
+	blt	10$
+    Sx	clr	iidx
+10$:	rts	pc		;	return;
+
+rdads:				;rdads()
+	Xfer RDIR rdintern+ADS 1 ADS
+	rts	pc		;	return xfer(RDIR,&ib.rdinternal[ADS],1,ADS)
+
+rqs:				;rqs(r)
+    xS	cmpb	r0,internal+SPM ;	if(ib.internal[SPM]==r) return 0;
+	bne	1$
+	clr	r0
+	br	10$
+1$: xS	movb	r0,internal+SPM ;	ib.internal[SPM]= r;
+	Xfer WTIR internal+SPM 1 SPM
+10$:	rts	pc		;	return xfer(WTIR,&ib.internal[SPM],1,SPM);
+
+valid:	mov	#VSC,r0		;valid() return ldaux(VSC);
+.endc
+
+ldaux:				;ldaux(c)
+    xS	movb	r0,internal+AUX ;	ib.internal[AUX]= c;
+	Xfer WTIR internal+AUX 1 AUX
+	rts	pc		;	return xfer(WTIR,&ib.internal[AUX],1,AUX);
+
+iwait:	mov	#ITIMO,r0
+1$:
+    Ux	mov	csr,r1
+	tstb	r1
+	bmi	2$
+	dec	r0
+	bne	1$
+	mov	#EITIMO,r0
+	br	9$
+2$:	bit	#NEX,r1
+	bne	7$
+    Ux	tstb	bcr+1
+	bne	8$
+    Sx	mov	csr,r0
+	bic	#^C<REN+SRQIE+ATN+CIC+IE>,r0
+    xU	mov	r0,csr
+	clr	r0
+	br	10$
+7$:	mov	#EINEXM,r0
+	br	9$
+8$:	mov	#EIDMACNT,r0
+9$:	sec
+10$:	rts	pc
+
+wait100:mov	#100.,r0	;wait100us()
+1$:
+.iif ne,DIAG,	jsr	pc,idlefn
+	dec	r0
+	bne	1$
+	rts	pc
+
+ibv2:	 .rept	 IBSLEN/2
+	0
+	.endr
+psave:	0
+
+size= .-begin
+	.end
+               

@@ -1,0 +1,810 @@
+	.enabl	lc
+	.title IBIC - GPIB Interactive Controller
+	.nlist	bex, ttm, cnd
+
+;	This software is provided solely for use with
+;	the National Instruments GPIB series interfaces.
+
+;	Copyright 1980 National Instruments
+
+;	Jeffrey Kodosky
+;	May	1980
+;	Edit	09/01/81
+;	REV C:	01/01/82
+;	REV D:	01/01/83
+
+
+; Edit the following assignments to reflect the desired software environment.
+OS=	1	; 1 if running under RT, 2 if running under RSX, 0 otherwise.
+
+
+	.macro	call subr a0 a1 a2 a3 a4 a5 a6 a7
+na=0
+	.irp	a,<a7,a6,a5,a4,a3,a2,a1,a0>
+.if nb,a
+	mov	a,-(sp)
+na=na+1
+.endc
+	.endr
+	jsr	pc,subr
+.iif eq,na-1,	tst	(sp)+
+.iif eq,na-2,	cmp	(sp)+,(sp)+
+.iif gt,na-2,	add	#na*2,sp
+	.endm	call
+
+	.macro	cjmp t f
+	.macro	j't' a ?b
+	b'f'	b
+	jmp	a
+b:
+	.endm	j't'
+	.macro	j'f' a ?b
+	b't'	b
+	jmp	a
+b:
+	.endm	j'f'
+	.endm	cjmp
+	.irp	j,<<eq,ne>,<cc,cs>,<mi,pl>>
+	cjmp	j
+	.endr
+
+	.macro	string a
+	.csect	sdata
+str= .
+	.narg	na
+.if eq,na
+	.byte	0
+.iff
+	.asciz	/a/
+.endc
+	.csect
+	.word	str
+	.endm	string
+
+.iif eq,OS-1,	.mcall	.exit, .ttyin, .ttyout
+.iif eq,OS-2,	.mcall	exit$s, alun$s, qiow$s
+
+fns:	string	<ibup>		;char *fns[] {
+	string	<gpib>		;	"ibup",
+				;	"gpib" };
+	.globl	ibup, gpib
+fctn:	ibup, gpib		;int (*fctn[])() { &ibup, &gpib };
+
+maxcode: 10., 16.		;int maxcode[] { 10, 16 };
+
+				;struct argdef {
+				;	char *name, *args, *ans; };
+
+fnargs: ibupargs, gpibargs	;struct argdef *fnargs[] { ibupargs, gpibargs };
+
+ibupargs:			;struct argdef ibupargs[] {
+	string	<write>		;	{"write", "ISL", "I" },
+	string	<ISL>
+	string	<I>
+	string	<read>		;	{"read", "IBN", "IB" },
+	string	<IBN>
+	string	<IB>
+	string	<clear>		;	{"clear", "I", "I" },
+	string	<I>
+	string	<I>
+	string	<trigger>	;	{"trigger", "I", "I" },
+	string	<I>
+	string	<I>
+	string	<remote>	;	{"remote", "I", "I" },
+	string	<I>
+	string	<I>
+	string	<local>		;	{"local", "I", "I" },
+	string	<I>
+	string	<I>
+	string	<poll>		;	{"poll", "I", "O" },
+	string	<I>
+	string	<O>
+	string	<configure>	;	{"configure", "III", "I" },
+	string	<III>
+	string	<I>
+	string	<passcontrol>	;	{"passcontrol", "I", "I" },
+	string	<I>
+	string	<I>
+	string	<define>	;	{"define", "IIIIIII", "I" },
+	string	<IIIIIII>
+	string	<I>
+	string	<finish>	;	{"finish", "", "I" }  };
+	string
+	string	<I>
+gpibargs:			;struct argdef gpibargs[] {
+	string	<command>	;	{"command", "SL", "I" },
+	string	<SL>
+	string	<I>
+	string	<write>		;	{"write", "SLI", "I" },
+	string	<SLI>
+	string	<I>
+	string	<read>		;	{"read", "BNII", "IB" },
+	string	<BNII>
+	string	<IB>
+	string	<transfer>	;	{"transfer", "", "I" },
+	string
+	string	<I>
+	string	<clear>		;	{"clear", "", "I" },
+	string
+	string	<I>
+	string	<remote>	;	{"remote", "", "I" },
+	string
+	string	<I>
+	string	<local>		;	{"local", "", "I" },
+	string
+	string	<I>
+	string	<parallelpoll>	;	{"parallelpoll", "", "O" },
+	string
+	string	<O>
+	string	<passcontrol>	;	{"passcontrol", "", "I" },
+	string
+	string	<I>
+	string	<setstatus>	;	{"setstatus", "I", "I" },
+	string	<I>
+	string	<I>
+	string	<monitor>	;	{"monitor", "I", "I" },
+	string	<I>
+	string	<I>
+	string	<readcommand>	;	{"readcommand", "", "O" },
+	string
+	string	<O>
+	string	<setparameters> ;	{"setparameters", "I", "I" },
+	string	<I>
+	string	<I>
+	string	<testsrq>	;	{"testsrq", "I", "I" },
+	string	<I>
+	string	<I>
+	string	<finish>	;	{"finish", "", "I" }  };
+	string
+	string	<I>
+	string	<status>	;	{"status", "BN", "IT" },
+	string	<BN>
+	string	<IT>
+	string	<spbyte>	;	{"spbyte", "I", "I" },
+	string	<I>
+	string	<I>
+				;	};
+
+MAXBUF= 2048.			;#define MAXBUF 2048
+MAXLIN= 256.			;#define MAXLIN 256
+lbuf:	.blkb	MAXLIN		;char lbuf[MAXLIN], ansbuf[MAXBUF], *cp;
+ansbuf: .blkb	MAXBUF
+cp:	0
+strlen: 0			;int strlen, fn;
+fn:	0
+argc:	0			;int argc;
+argv:	code			;int argv[9] { &code };
+	.blkw	8.
+code:	0			;int code, args[8];
+args:	.blkw	8.
+	.globl	ibic
+ibic:				;ibic(){ int n, i; char *atp, c;
+.if eq,OS
+	mov	#stack,sp
+	jsr	pc,init
+.endc
+loop:	call	getline		;loop:	while((n=getline())>=0){
+	tst	r0
+	jmi	out
+	beq	loop		;		if(n==0) continue;
+	mov	#lbuf,cp	;		cp= lbuf;
+	call	getfn		;		if((fn=getfn())<0) continue;
+	mov	r0,fn
+	bmi	loop
+	call	getcode fn	;		if((code=getcode(fn))<0) continue;
+	mov	r0,code
+	bmi	loop
+	clr	r2		;		for(i=0, argc=1, atp=fnargs[fn][code].args; c= *atp++; )
+	mov	#1,argc
+	mov	fn,r0
+	asl	r0
+	mov	fnargs(r0),r0
+	mov	code,r1
+	asl	r1
+	add	code,r1
+	asl	r1
+	add	r1,r0
+	mov	2(r0),r3
+for:	movb	(r3)+,r4
+	beq	10$		;			switch(c){
+	cmpb	r4,#'N		;				case 'N':
+	bne	11$		;					if((argv[argc++]= getint(i++))==0)
+	call	getint r2
+	inc	r2
+	tst	r0
+	beq	loop		;						goto loop;
+	cmp	@r0,#MAXBUF	;					if(args[i-1]>MAXBUF) args[i-1]= MAXBUF;
+	ble	5$
+	mov	#MAXBUF,@r0
+	br	5$		;					break;
+11$:	cmpb	r4,#'I		;				case 'I':
+	bne	1$
+	call	getint r2	;					if((argv[argc++]= getint(i++))==0)
+	inc	r2		;						break;
+	br	5$		;					break;
+1$:	cmpb	r4,#'S		;				case 'S':
+	bne	2$		;					if((argv[argc++]= getstr())==0)
+	call	getstr		;						break;
+	br	5$		;					break;
+2$:	cmpb	r4,#'L		;				case 'L':
+	bne	3$
+	mov	#strlen,r0	;					argv[argc++]= &strlen;
+	br	5$		;					break;
+3$:	cmpb	r4,#'B		;				case 'B':
+	bne	for
+	mov	#ansbuf,r0	;					argv[argc++]= ansbuf;
+5$:	mov	argc,r1		;					break;
+	inc	argc		;				}
+	asl	r1
+	mov	r0,argv(r1)
+	beq	loop
+	br	for
+
+10$:	jsr	r5,rsav		;		i= (*fctn[fn])(argc,argv);
+	mov	#argc,r5
+	mov	fn,r0
+	asl	r0
+	jsr	pc,@fctn(r0)
+	jsr	r5,rres
+	mov	r0,r2
+	mov	fn,r0		;		for(atp= fnargs[fn][code].ans; c= *atp++; )
+	asl	r0
+	mov	fnargs(r0),r0
+	mov	code,r1
+	asl	r1
+	add	code,r1
+	asl	r1
+	add	r1,r0
+	mov	4(r0),r3
+for1:	movb	(r3)+,r4
+	beq	10$		;			switch(c){
+	cmpb	r4,#'I		;				case 'I': putd(i); putc(' '); break;
+	bne	1$
+	call	putd r2
+	br	5$
+1$:	cmpb	r4,#'O		;				case 'O':
+	bne	2$
+	tst	r2		;					if(i<0) putd(i);
+	bpl	11$
+	call	putd r2
+	br	5$
+11$:	call	puto r2		;					else puto(i);
+	br	5$		;					putc(' '); break;
+2$:	cmpb	r4,#'B		;				case 'B': put(ansbuf,i); putc(' '); break;
+	bne	6$		;
+	call	put #ansbuf r2
+	br	5$
+6$:	cmpb	r4,#'T		;				case 'T': putt (ansbuf,i); break;
+	bne	5$
+	call	putt #ansbuf r2
+5$:	call	putc #040	;				}
+	br	for1
+10$:	call	putc #012	;		putc('\n');
+	jmp	loop		;	}	 }
+out:
+.iif eq,OS,	jmp	ibic
+.iif eq,OS-1,	.exit
+.iif eq,OS-2,	exit$s
+
+getfn:	jsr	r5,rsav		;getfn(){ int fn;char *s, **a;
+	call	skpspc		;	skpspc();
+	clr	r4		;	for(fn=0, a=fns; fn<2; fn++, a++)
+	mov	#fns,r3
+1$:	cmp	r4,#2
+	bge	2$
+	call	match cp (r3)+	;		if(match(cp,*a)) break;
+	tst	r0
+	bne	3$
+	inc	r4
+	br	1$
+2$:	call	putl emsg1	;	if(fn>=2){ putl("unrecognized function"); return -1; }
+	mov	#-1,r4
+	br	10$
+3$:	call	skpnspc		;	skpnspc();
+10$:	mov	r4,r0		;	return fn; }
+	jmp	rrtn
+emsg1:	string	<unrecognized function>
+
+getcode:jsr	r5,rsav		;getcode(fn){ int f; struct argdef *a;
+	call	skpspc		;	skpspc();
+	mov	4(r5),r3
+	asl	r3
+	mov	maxcode(r3),r2
+	movb	@cp,r0		;	if(*cp>='0' && *cp<='9') f= atoi(cp);
+	cmpb	r0,#'0
+	blt	1$
+	cmpb	r0,#'9
+	bgt	1$
+	call	atoi cp
+	mov	r0,r4
+	bmi	5$
+	cmp	r4,r2
+	bgt	5$
+	br	8$
+1$:	clr	r4		;	else for(f=0, a=fnargs[fn]; f<=maxcode[fn]; a++, f++)
+	mov	fnargs(r3),r3
+2$:	cmp	r4,r2
+	bgt	5$
+	call	match cp @r3	;		if(match(cp,a->name)) break;
+	tst	r0
+	bne	8$
+	inc	r4
+	add	#6,r3
+	br	2$
+5$:	call	putl emsg2	;	if(f<0 || f>maxcode[fn]){ putl("illegal code"); return -1; }
+	mov	#-1,r4
+	br	10$
+8$:	call	skpnspc		;	skpnspc();
+10$:	mov	r4,r0		;	return f; }
+	jmp	rrtn
+emsg2:	string	<illegal code>
+
+getint: jsr	r5,rsav		;getint(i){ char *s;
+	call	skpspc		;	skpspc();
+	movb	@cp,r0		;	if(*cp>='0' && *cp<='9' || *cp=='-'){
+	cmpb	r0,#'0
+	blt	1$
+	cmpb	r0,#'9
+	ble	2$
+1$:	cmpb	r0,#'-
+	bne	3$
+2$:	mov	4(r5),r1	;		args[i]= atoi(cp);
+	asl	r1
+	add	#args,r1
+	call	atoi cp
+	mov	r0,@r1
+	call	skpnspc		;		skpnspc();
+	mov	r1,r0		;		return &args[i]; }
+	br	10$
+3$:	call	putl emsg3	;	putl("illegal integer argument");
+	clr	r0		;	return 0; }
+10$:	jmp	rrtn
+emsg3:	string	<illegal integer argument>
+
+getstr: jsr	r5,rsav		;getstr(){ char *s;
+	call	skpspc		;	skpspc();
+	movb	@cp,r0		;	if(*cp++=='"'){
+	inc	cp
+	cmpb	r0,#'"
+	bne	8$
+	clr	strlen		;		for(strlen=0, s=ansbuf; *cp && *cp!='"'; strlen++)
+	mov	#ansbuf,r4
+1$:	movb	@cp,r0
+	beq	5$
+	cmpb	r0,#'"
+	beq	4$
+	call	cscan		;			*s++= cscan();
+	movb	r0,(r4)+
+	inc	strlen
+	br	1$
+4$:	call	skpnspc		;		skpnspc();
+5$:	mov	#ansbuf,r0	;		return ansbuf; }
+	br	10$
+8$:	call	putl emsg4	;	putl("illegal string argument");
+	clr	r0		;	return 0; }
+10$:	jmp	rrtn
+emsg4:	string	<illegal string argument>
+
+skpspc:				;skpspc(){
+	movb	@cp,r0		;	while(*cp && *cp<=' ') cp++; }
+	beq	10$
+	cmpb	r0,#040
+	bhi	10$
+	inc	cp
+	br	skpspc
+10$:	rts	pc
+
+skpnspc:			;skpnspc(){
+	movb	@cp,r0		;	while(*cp>' ') cp++; }
+	cmpb	r0,#040
+	blos	10$
+	inc	cp
+	br	skpnspc
+10$:	rts	pc
+
+putl:	mov	2(sp),r0	;putl(s) char *s;{
+	call	puts r0		;	puts(s); putc('\n'); }
+	call	putc #012
+	rts	pc
+
+puts:	jsr	r5,rsav		;puts(s) char *s;{
+	mov	4(r5),r4	;	while(*s) putc(*s++); }
+1$:	movb	(r4)+,r3
+	beq	10$
+	call	putc r3
+	br	1$
+10$:	jmp	rrtn
+
+put:	jsr	r5,rsav		;put(s,i) char *s;{
+	mov	6(r5),r4	;	while(i-->0)
+	ble	10$
+	mov	4(r5),r3
+1$:	movb	(r3)+,r2	;		if((c= *s++)>=' ' && c<0177)
+	cmpb	r2,#040
+	blt	2$
+	cmpb	r2,#0177
+	bge	2$
+	call	putc r2		;			putc(c);
+	br	9$
+2$:	call	putc #'\	;		else {	putc('\\');
+	cmpb	r2,#015		;			switch(c){
+	bne	3$
+	mov	#'r,r2		;				case '\r': putc('r'); break;
+	br	8$
+3$:	cmpb	r2,#012
+	bne	4$
+	mov	#'n,r2		;				case '\n': putc('n'); break;
+	br	8$
+4$:	cmpb	r2,#011
+	bne	5$
+	mov	#'t,r2		;				case '\t': putc('t'); break;
+	br	8$
+5$:	cmpb	r2,#010
+	bne	6$
+	mov	#'b,r2		;				case '\b': putc('b'); break;
+	br	8$
+6$:	cmpb	r2,#014
+	bne	7$
+	mov	#'p,r2		;				case '\014': putc('p'); break;
+	br	8$
+7$:	mov	r2,r0		;				default:
+	asl	r0		;					putc(((c>>6)&3)+'0');
+	asl	r0
+	swab	r0
+	bic	#177774,r0
+	add	#'0,r0
+	call	putc r0
+	mov	r2,r0
+	asr	r0		;					putc(((c>>3)&7)+'0');
+	asr	r0
+	asr	r0
+	bic	#177770,r0
+	add	#'0,r0
+	call	putc r0
+	bic	#177770,r2	;					putc((c&7)+'0');
+	add	#'0,r2
+8$:	call	putc r2
+9$:	dec	r4
+	bgt	1$
+10$:	jmp	rrtn
+
+putd:				;putd(n){
+	tst	2(sp)		;	if(n<0){ putc('-'); n= -n; }
+	bpl	putu		;	putu(n); }
+	call	putc #'-
+	neg	2(sp)
+	;br	putu
+putu:	mov	2(sp),r0	;putu(u) unsigned u;{
+	cmp	r0,#10.		;	if(u>=10) putu(u/10);
+	blt	10$
+	mov	r1,-(sp)
+	mov	r2,-(sp)
+	mov	#16.,r2
+	clr	r1
+1$:	sec
+	rol	r0
+	rol	r1
+	sub	#10.,r1
+	bpl	2$
+	add	#10.,r1
+	dec	r0
+2$:	dec	r2
+	bne	1$
+	mov	(sp)+,r2
+	mov	r1,4(sp)
+	mov	(sp)+,r1
+	call	putu r0
+10$:	add	#'0,2(sp)	;	putc(u%10 + '0'); }
+	jmp	putc
+
+puto:	mov	2(sp),r0	;puto(o){
+	bit	#0177770,r0	;	if(o&0177770) puto((o>>3)&017777);
+	beq	1$
+	asr	r0
+	asr	r0
+	asr	r0
+	bic	#160000,r0
+	call	puto r0
+1$:	bic	#177770,2(sp)	;	putc((o&7) +'0'); }
+	add	#'0,2(sp)
+	jmp	putc
+
+putt:	jsr	r5,rsav		;putt (s, i) int *s; {
+	mov	4(r5),r2	;
+	mov	r2,r4		;
+	add	6(r5),r4	;	while (s <= &s[i])
+	clr	r3		;		for (j = 8; j--; )  {
+	br	1$
+2$:	call	puto (r2)+	;			puto (*s++);
+	call	putc #040	;			putc (' ');
+1$:	cmp	r2,r4		;			}
+	bhis	3$		;
+	dec	r3		;
+	bgt	2$		;
+	call	putc #012	;
+	mov	#8.,r3		;
+	br	2$		;
+3$:	call	putc #012	;
+	jmp	rrtn		;
+
+atoi:	jsr	r5,rsav		;atoi(s) char *s;{ int sign, base, n;
+	clr	-(sp)		;	sign= 0;
+	mov	#10.,r4		;	base= 10;
+	mov	4(r5),r2
+	cmpb	@r2,#'-		;	if(*s=='-'){ sign++; s++; }
+	bne	1$
+	inc	@sp
+	inc	r2
+	br	2$
+1$:	cmpb	@r2,#'0		;	else if(*s=='0'){ base= 8; s++; }
+	bne	2$
+	mov	#8.,r4
+	inc	r2
+2$:	clr	r0		;	for(n=0; *s>='0' && *s<='9'; ) n= n*base + *s - '0';
+3$:	movb	(r2)+,r3
+	cmpb	r3,#'0
+	blt	10$
+	cmpb	r3,#'9
+	bgt	10$
+	sub	#'0,r3
+	mov	r4,r1
+4$:	add	r0,r3
+	dec	r1
+	bgt	4$
+	mov	r3,r0
+	br	3$
+10$:	tst	(sp)+		;	return sign? -n:n; }
+	beq	11$
+	neg	r0
+11$:	jmp	rrtn
+
+getline:jsr	r5,rsav		;getline(){ char *s;
+	call	putc #':	;	putc(':');
+	mov	#lbuf,r4	;	for(s=lbuf; (*s=getc())!='\n'; s++)
+1$:	call	getc
+	movb	r0,@r4
+	beq	5$
+	cmpb	r0,#012
+	beq	8$
+	cmpb	r0,#015
+	beq	1$
+	inc	r4
+	br	1$
+5$:	sub	#lbuf,r4	;		if(*s==0) return s>lbuf? s-lbuf: -1;
+	bne	10$
+	dec	r4
+	br	10$
+8$:	clrb	@r4		;	*s= 0;
+	sub	#lbuf,r4	;	return s-lbuf; }
+10$:	mov	r4,r0
+	jmp	rrtn
+
+match:	jsr	r5,rsav		;match(st,s) char *st, *s;{ char *t;
+	mov	4(r5),r4	;	for(t=st; *t==*s || *t==(*s&~040); t++)
+	mov	6(r5),r3
+1$:	movb	@r3,r0
+	cmpb	r0,@r4
+	beq	2$
+	bic	#040,r0
+	cmpb	r0,@r4
+	bne	5$
+2$:	tstb	(r3)+		;		if(*s++==0) return 1;
+	beq	10$
+	inc	r4
+	br	1$
+5$:	cmp	r4,4(r5)	;	if(t>st && *t<=' ') return 1;
+	blos	9$
+	cmpb	@r4,#040
+	blos	10$
+9$:	clr	r0		;	return 0; }
+	br	11$
+10$:	mov	#1,r0
+11$:	jmp	rrtn
+
+cscan:	jsr	r5,rsav		;cscan(){ int c, i;
+	movb	@cp,r0		;	if(*cp!='\\') return *cp++;
+	inc	cp
+	cmpb	r0,#'\
+	bne	10$
+	movb	@cp,r1		;	cp++;
+	cmpb	r1,#'0		;	if(*cp>='0' && *cp<='7'){
+	blt	3$
+	cmpb	r1,#'7
+	bgt	3$
+	clr	r0		;		for(i=3, n=0; i-->0 && *cp>='0' && *cp<='7'; )
+	mov	#3,r4
+2$:	asl	r0		;			n= n<<3 + *cp++ -'0';
+	asl	r0
+	asl	r0
+	sub	#'0,r1
+	add	r1,r0
+	inc	cp
+	dec	r4
+	beq	10$
+	movb	@cp,r1
+	cmpb	r1,#'0
+	blt	10$
+	cmpb	r1,#'7
+	bgt	10$
+	br	2$		;		return n; }
+3$:	mov	r1,r0		;	switch(*cp){
+	beq	10$		;		case 0: return 0;
+	bis	#040,r1
+	cmpb	r1,#'n		;		case 'n': cp++; return '\n';
+	bne	5$
+	mov	#12,r0
+	br	9$
+5$:	cmpb	r1,#'t		;		case 't': cp++; return '\t';
+	bne	6$
+	mov	#11,r0
+	br	9$
+6$:	cmpb	r1,#'r		;		case 'r': cp++; return '\r';
+	bne	7$
+	mov	#15,r0
+	br	9$
+7$:	cmpb	r1,#'b		;		case 'b': cp++; return '\b';
+	bne	8$
+	mov	#10,r0
+	br	9$
+8$:	cmpb	r1,#'p		;		case 'p': cp++; return '\014';
+	bne	9$
+	mov	#14,r0
+9$:	inc	cp		;		default: return *cp++;
+10$:	jmp	rrtn		;	}	}
+
+.if eq,OS
+init:	reset
+	clr	ll
+	clr	ln
+	clr	r0
+	clr	r1
+1$:	tst	(r1)+
+	mov	r1,(r0)+
+	clr	(r0)+
+	tst	(r1)+
+	cmp	r0,#1000
+	blo	1$
+	rts	pc
+
+TTY=	0177560
+MAXL=	80.
+lb:	.blkb	MAXL
+ll:	0
+ln:	0
+
+getc:	jsr	r5,rsav		;getc(){
+	cmp	ln,ll		;	if(ln>=ll)
+	blt	10$
+	clr	ln		;		for(ln=0, ll=0; ll<MAXL; )
+	clr	r1
+1$:	tstb	@#TTY		;			while((TTY->rsr&DONE)==0) ;
+	bpl	1$
+	mov	@#TTY+2,r2	;			switch(c=TTY->rdb&0177)
+	bic	#177600,r2
+	cmpb	r2,#025		;				case CTRLU:
+	bne	2$
+	clr	r1		;					ll= 0;
+	call	putc #012	;					putc('\n');
+	br	8$		;					break;
+2$:	cmpb	r2,#0177	;				case DELETE:
+	bne	3$
+	tst	r1		;					if(ll)
+	beq	8$
+	dec	r1		;						ll--;
+	call	putc #'#	;						putc('#');
+	br	8$		;					break;
+3$:	cmpb	r2,#015		;				case '\r':
+	bne	4$
+	mov	#012,r2		;					c= '\n';
+	br	5$
+4$:	cmpb	r2,#012		;				case '\n':
+	bne	6$
+5$:	movb	r2,lb(r1)	;					lb[ll++]= c;
+	inc	r1
+	call	putc r2		;					putc(c);
+	br	9$		;					goto out;
+6$:	movb	r2,lb(r1)	;				default:
+	inc	r1		;					lb[ll++]= c;
+	call	putc r2		;					putc(c);
+8$:	cmp	r1,#MAXL	;					if(ll>=MAXL) goto out;
+	blt	1$
+9$:	mov	r1,ll
+10$:	mov	ln,r1		;out:	return lb[ln++];
+	movb	lb(r1),r0
+	inc	r1
+	mov	r1,ln
+	jmp	rrtn
+
+putc:				;putc(c){
+	cmpb	2(sp),#012	;	if(c=='\n') putc('\r');
+	bne	1$
+	call	putc #015
+1$:	tstb	@#TTY+4		;	while((TTY->tsr&DONE)==0) ;
+	bpl	1$
+	mov	2(sp),r0	;	return (TTY->tdb= c); }
+	movb	r0,@#TTY+6
+	rts	pc
+
+stacklo:.=.+400
+stack:
+.endc
+.if eq,OS-1
+getc:	.ttyin			;getc(){ return ttyin(); }
+	rts	pc
+
+putc:	cmpb	2(sp),#012	;putc(c){
+	bne	1$		;	if(c=='\n') ttyout('\r');
+	.ttyout #015
+1$:	.ttyout 2(sp)		;	ttyout(c); }
+	rts	pc
+.endc
+.if eq,OS-2
+IO.RLB= 01000
+IO.WLB= 0400
+IE.EOF= -10.
+MAXL=	80.
+
+char:	0
+lb:	.blkb	MAXL
+ln:	0
+ll:	0
+iost:	0,0
+
+getc:	call	doalun		;getc(){ return qiow(); }
+	cmp	ln,ll		;	if(ln>=ll){
+	blt	10$
+	clr	ln		;		ln= 0; ll= qiow(&lb);
+	qiow$s	#IO.RLB, #2, #52., , #iost, , <#lb, #MAXL>
+	mov	iost+2,r0
+	movb	#012,lb(r0)	;		lb[ll++]= eof()? 0:'\n';
+	cmpb	#IE.EOF,iost
+	bne	9$
+	clrb	lb(r0)
+9$:	inc	r0
+	mov	r0,ll
+	call	putc #012
+10$:	mov	ln,r0		;	return lb[ln++]; }
+	inc	ln
+	movb	lb(r0),r0
+	rts	pc
+
+putc:	call	doalun		;putc(c){
+	cmpb	2(sp),#012	;	if(c=='\n') putc('\r');
+	bne	1$
+	call	putc #015
+1$:	mov	2(sp),char
+	qiow$s	#IO.WLB, #2, #52., , , , <#char, #1>
+	rts	pc
+
+alun:	0
+doalun: tst	alun
+	bne	1$
+	alun$s	#2, #"TI, #0
+	inc	alun
+	call	putc #012
+1$:	rts	pc
+.endc
+
+rsav:	mov	r5,r0
+	mov	sp,r5
+	.irp	a,<r4,r3,r2,r1>
+	mov	a,-(sp)
+	.endr
+	jmp	@r0
+rres:	tst	(sp)+
+	.irp	a,<r1,r2,r3,r4>
+	mov	(sp)+,a
+	.endr
+	rts	r5
+rrtn:	sub	#10,r5
+	mov	r5,sp
+	.irp	a,<r1,r2,r3,r4,r5>
+	mov	(sp)+,a
+	.endr
+	rts	pc
+
+	.csect	sdata
+	.even
+
+	.end	ibic
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
