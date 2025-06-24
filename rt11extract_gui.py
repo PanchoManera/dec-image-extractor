@@ -546,15 +546,37 @@ class RT11ExtractGUI:
             lines = list_output.split('\n')
             for line in lines:
                 line = line.strip()
-                # Look for lines with filename, type, size, status, date
-                if line and not line.startswith('-') and len(line.split()) >= 5:
+                # Look for lines with data that match the table format
+                # Skip header lines, separators, and summary lines
+                if (line and not line.startswith('-') and not line.startswith('=') and 
+                    'Filename' not in line and 'Type' not in line and 
+                    'Total files:' not in line and 'RT-11 Directory Listing:' not in line and
+                    'RT-11 Extractor' not in line and 'Processing:' not in line and
+                    line != '' and len(line.split()) >= 5):
+                    
+                    # Split the line into parts - use more flexible parsing
                     parts = line.split()
-                    if len(parts) >= 5 and parts[-1] != 'Date':
-                        filename = parts[0]
-                        date_str = parts[-1]
-                        # Validate date format
-                        if '-' in date_str and len(date_str.split('-')) == 3:
-                            date_map[filename] = date_str
+                    
+                    # Look for date pattern in the line (YYYY-MM-DD)
+                    date_str = None
+                    filename = parts[0] if parts else None
+                    
+                    # Search for date pattern in all parts
+                    for part in parts:
+                        if '-' in part and len(part.split('-')) == 3:
+                            try:
+                                # Check if it looks like a date
+                                year, month, day = part.split('-')
+                                if (len(year) == 4 and len(month) == 2 and len(day) == 2 and
+                                    year.isdigit() and month.isdigit() and day.isdigit()):
+                                    date_str = part
+                                    break
+                            except (ValueError, IndexError):
+                                continue
+                    
+                    # If we found both filename and date, add to map
+                    if filename and date_str:
+                        date_map[filename] = date_str
         
         # Get files from directory
         for file_path in scan_dir.rglob('*'):
@@ -957,7 +979,8 @@ Digital Equipment Corporation (DEC) computers."""
         if sys.platform == "win32":
             fuse_script_name = "rt11_mount.bat"
         else:
-            fuse_script_name = "rt11_fuse.sh"
+            # Use the wrapper script that prefers standalone executable
+            fuse_script_name = "rt11_fuse_wrapper.sh"
         
         # Find FUSE script in appropriate location
         if getattr(sys, 'frozen', False) and str(script_dir).endswith('.app/Contents/MacOS'):

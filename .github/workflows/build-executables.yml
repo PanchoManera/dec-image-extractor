@@ -138,6 +138,10 @@ jobs:
         [ -f "rt11_fuse_complete.py" ] && cp rt11_fuse_complete.py RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse_complete.py not found"
         [ -f "rt11_fuse_wrapper.sh" ] && cp rt11_fuse_wrapper.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse_wrapper.sh not found"
         [ -f "setup_fuse.sh" ] && cp setup_fuse.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "setup_fuse.sh not found"
+        # IMPORTANT: Also copy FUSE files inside the .app bundle so GUI can find them
+        [ -f "dist/rt11_fuse" ] && cp dist/rt11_fuse "RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract.app/Contents/Resources/" || echo "rt11_fuse executable not available for app bundle"
+        [ -f "rt11_fuse_wrapper.sh" ] && cp rt11_fuse_wrapper.sh "RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract.app/Contents/Resources/" || echo "rt11_fuse_wrapper.sh not found for app bundle"
+        [ -f "rt11_fuse_complete.py" ] && cp rt11_fuse_complete.py "RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract.app/Contents/Resources/" || echo "rt11_fuse_complete.py not found for app bundle"
         # Set permissions for CLI tools
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/rt11extract_cli
         chmod +x RT11Extractor-macOS-${{ matrix.arch }}/imd2raw
