@@ -1224,76 +1224,153 @@ Digital Equipment Corporation (DEC) computers."""
     def unmount_fuse(self):
         """Unmount the FUSE/WinFsp filesystem"""
         if not self.fuse_mount_point:
+            self.log("No mount point to unmount")
             return
         
+        unmount_success = False
+        
         try:
-            self.log("Unmounting filesystem...")
+            self.log(f"Attempting to unmount filesystem at: {self.fuse_mount_point}")
             
             # Platform-specific unmounting
             if sys.platform == "win32":
-                # Windows: Use net use command to disconnect WinFsp drive
-                try:
-                    # First try to disconnect the network drive
-                    result = subprocess.run(["net", "use", str(self.fuse_mount_point), "/delete", "/y"], 
-                                          capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
-                    if result.returncode == 0:
-                        self.log(f"Successfully disconnected drive {self.fuse_mount_point}")
-                    else:
-                        self.log(f"net use command failed: {result.stderr}")
-                        # Try alternative method: terminate the WinFsp process
-                        if self.fuse_process and self.fuse_process.poll() is None:
-                            self.fuse_process.terminate()
-                            try:
-                                self.fuse_process.wait(timeout=5)
-                                self.log("WinFsp process terminated successfully")
-                            except subprocess.TimeoutExpired:
-                                self.fuse_process.kill()
-                                self.log("WinFsp process force-killed")
-                except Exception as e:
-                    self.log(f"Error unmounting WinFsp drive: {e}")
-                    # Fallback: try to terminate process
-                    if self.fuse_process and self.fuse_process.poll() is None:
+                self.log("Windows: Attempting WinFsp unmount...")
+                
+                # Method 1: Try to terminate the WinFsp process first (most reliable)
+                if hasattr(self, 'fuse_process') and self.fuse_process and self.fuse_process.poll() is None:
+                    self.log("Terminating WinFsp process...")
+                    try:
                         self.fuse_process.terminate()
+                        self.fuse_process.wait(timeout=5)
+                        self.log("WinFsp process terminated successfully")
+                        unmount_success = True
+                    except subprocess.TimeoutExpired:
+                        self.log("Process termination timeout, force killing...")
+                        self.fuse_process.kill()
                         try:
-                            self.fuse_process.wait(timeout=3)
+                            self.fuse_process.wait(timeout=2)
+                            self.log("WinFsp process force-killed")
+                            unmount_success = True
                         except subprocess.TimeoutExpired:
-                            self.fuse_process.kill()
+                            self.log("ERROR: Could not kill WinFsp process")
+                    except Exception as e:
+                        self.log(f"Error terminating WinFsp process: {e}")
+                
+                # Method 2: Try net use command as backup
+                if not unmount_success:
+                    self.log("Trying net use disconnect command...")
+                    try:
+                        cmd = ["net", "use", str(self.fuse_mount_point), "/delete", "/y"]
+                        self.log(f"Running: {' '.join(cmd)}")
+                        result = subprocess.run(cmd, capture_output=True, text=True, 
+                                              creationflags=CREATE_NO_WINDOW, timeout=10)
+                        
+                        self.log(f"net use exit code: {result.returncode}")
+                        if result.stdout:
+                            self.log(f"net use stdout: {result.stdout.strip()}")
+                        if result.stderr:
+                            self.log(f"net use stderr: {result.stderr.strip()}")
+                        
+                        if result.returncode == 0:
+                            self.log(f"Successfully disconnected drive {self.fuse_mount_point}")
+                            unmount_success = True
+                        else:
+                            # Try alternative disconnect command
+                            self.log("Trying alternative disconnect command...")
+                            alt_cmd = ["net", "use", str(self.fuse_mount_point), "/delete"]
+                            alt_result = subprocess.run(alt_cmd, capture_output=True, text=True,
+                                                      creationflags=CREATE_NO_WINDOW, timeout=10)
+                            if alt_result.returncode == 0:
+                                self.log(f"Alternative disconnect succeeded for {self.fuse_mount_point}")
+                                unmount_success = True
+                            else:
+                                self.log(f"Both net use commands failed")
+                                
+                    except subprocess.TimeoutExpired:
+                        self.log("net use command timed out")
+                    except Exception as e:
+                        self.log(f"Error with net use command: {e}")
+                
+                # Method 3: Try direct file system check (verify unmount)
+                if not unmount_success:
+                    self.log("Checking if drive is still accessible...")
+                    try:
+                        test_path = str(self.fuse_mount_point) + "\\"
+                        if not os.path.exists(test_path):
+                            self.log("Drive is no longer accessible, assuming unmounted")
+                            unmount_success = True
+                        else:
+                            try:
+                                # Try to list files - if this fails, drive might be unmounted
+                                os.listdir(test_path)
+                                self.log("Drive is still accessible - unmount may have failed")
+                            except OSError:
+                                self.log("Drive exists but not accessible - assuming unmounted")
+                                unmount_success = True
+                    except Exception as e:
+                        self.log(f"Error checking drive accessibility: {e}")
+                        # Assume it's unmounted if we can't check
+                        unmount_success = True
+                        
             else:
                 # Unix systems (macOS/Linux): Terminate FUSE process first
-                if self.fuse_process and self.fuse_process.poll() is None:
-                    self.fuse_process.terminate()
+                self.log("Unix: Attempting FUSE unmount...")
+                if hasattr(self, 'fuse_process') and self.fuse_process and self.fuse_process.poll() is None:
+                    self.log("Terminating FUSE process...")
                     try:
+                        self.fuse_process.terminate()
                         self.fuse_process.wait(timeout=5)
+                        self.log("FUSE process terminated successfully")
+                        unmount_success = True
                     except subprocess.TimeoutExpired:
+                        self.log("FUSE process termination timeout, force killing...")
                         self.fuse_process.kill()
+                        self.log("FUSE process force-killed")
+                        unmount_success = True
+                    except Exception as e:
+                        self.log(f"Error terminating FUSE process: {e}")
                 
-                # On macOS, try unmounting with umount
+                # Try platform-specific unmount commands as backup
                 if sys.platform == "darwin":
                     try:
-                        subprocess.run(["umount", str(self.fuse_mount_point)], 
-                                     check=True, capture_output=True)
-                    except subprocess.CalledProcessError:
-                        pass  # Process termination may have already unmounted
-                
-                # On Linux, try fusermount
+                        result = subprocess.run(["umount", str(self.fuse_mount_point)], 
+                                               check=True, capture_output=True, timeout=5)
+                        self.log("macOS umount command succeeded")
+                        unmount_success = True
+                    except subprocess.CalledProcessError as e:
+                        self.log(f"umount command failed: {e}")
+                        # Process termination may have already unmounted
+                    except subprocess.TimeoutExpired:
+                        self.log("umount command timed out")
                 elif sys.platform.startswith('linux'):
                     try:
-                        subprocess.run(["fusermount", "-u", str(self.fuse_mount_point)], 
-                                     check=True, capture_output=True)
-                    except subprocess.CalledProcessError:
-                        pass  # Process termination may have already unmounted
+                        result = subprocess.run(["fusermount", "-u", str(self.fuse_mount_point)], 
+                                               check=True, capture_output=True, timeout=5)
+                        self.log("Linux fusermount command succeeded")
+                        unmount_success = True
+                    except subprocess.CalledProcessError as e:
+                        self.log(f"fusermount command failed: {e}")
+                        # Process termination may have already unmounted
+                    except subprocess.TimeoutExpired:
+                        self.log("fusermount command timed out")
             
-            self.log("Filesystem unmounted successfully.")
+            if unmount_success:
+                self.log("Filesystem unmounted successfully!")
+            else:
+                self.log("WARNING: Unmount may have failed or was only partially successful")
             
         except Exception as e:
-            self.log(f"Error during unmount: {e}")
+            self.log(f"ERROR during unmount: {e}")
+            # Continue with cleanup even if unmount failed
         finally:
-            # Reset state for all platforms
+            # Always reset state regardless of unmount success
+            self.log("Resetting mount state...")
             if hasattr(self, 'mount_btn') and self.mount_btn is not None:
-                self.mount_btn.config(text="Mount as Filesystem", command=self.mount_fuse)
+                self.mount_btn.config(text="Mount as Filesystem", command=self.mount_fuse, state="normal")
             self.fuse_mount_point = None
             self.fuse_process = None
             self.fuse_mounted = False
+            self.log("Mount state reset complete")
     
     def _find_available_drive_letter(self):
         """Find an available drive letter on Windows"""
@@ -1427,24 +1504,36 @@ Digital Equipment Corporation (DEC) computers."""
     
     def on_closing(self):
         """Handle application closing"""
-        # Check if FUSE/WinFsp filesystem is mounted
+        # Check if FUSE/WinFsp filesystem is mounted (both internal state and external detection)
+        mounted_location = None
+        
         if hasattr(self, 'fuse_mounted') and self.fuse_mounted and self.fuse_mount_point:
+            mounted_location = self.fuse_mount_point
+        elif sys.platform == "win32":
+            # Also check for any active WinFsp mounts we might not know about
+            mounted_drives = self._get_winfsp_mounted_drives()
+            if mounted_drives:
+                mounted_location = mounted_drives[0]
+                self.fuse_mount_point = mounted_location  # Update our state
+                self.fuse_mounted = True
+        
+        if mounted_location:
             # Choose appropriate dialog title and instructions based on platform
             if sys.platform == "win32":
                 dialog_title = "WinFsp Filesystem Mounted"
-                unmount_instructions = f"You can eject it from File Explorer or using:\n  net use {self.fuse_mount_point} /delete"
+                unmount_instructions = f"You can eject it from File Explorer or using:\n  net use {mounted_location} /delete"
             else:
                 dialog_title = "FUSE Filesystem Mounted"
                 if sys.platform == "darwin":
-                    unmount_instructions = f"umount {self.fuse_mount_point}"
+                    unmount_instructions = f"umount {mounted_location}"
                 elif sys.platform.startswith('linux'):
-                    unmount_instructions = f"fusermount -u {self.fuse_mount_point}"
+                    unmount_instructions = f"fusermount -u {mounted_location}"
                 else:
                     unmount_instructions = "Check your system documentation for unmount commands"
             
             response = messagebox.askyesnocancel(
                 dialog_title,
-                f"A filesystem is currently mounted at:\n{self.fuse_mount_point}\n\n" +
+                f"A filesystem is currently mounted at:\n{mounted_location}\n\n" +
                 "Do you want to keep it mounted after closing the application?\n\n" +
                 "• Yes: Keep mounted and close application\n" +
                 "• No: Unmount and close application\n" +
@@ -1454,14 +1543,16 @@ Digital Equipment Corporation (DEC) computers."""
             if response is None:  # Cancel
                 return  # Don't close
             elif response is False:  # No - unmount and close
+                self.log("User chose to unmount filesystem before closing...")
                 self.unmount_fuse()
-                self.log("Filesystem unmounted before closing.")
+                self.log("Filesystem unmounted successfully.")
             else:  # Yes - keep mounted and close
+                self.log("User chose to keep filesystem mounted.")
                 self.log("Leaving filesystem mounted. You can unmount it manually with:")
                 self.log(f"  {unmount_instructions}")
                 
                 # Detach the process so it continues running
-                if self.fuse_process:
+                if hasattr(self, 'fuse_process') and self.fuse_process:
                     self.fuse_process = None  # Don't terminate it
         
         # Clean up temp directory
