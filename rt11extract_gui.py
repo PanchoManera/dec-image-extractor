@@ -530,7 +530,7 @@ class RT11ExtractGUI:
         # Enable buttons
         self.extract_all_btn.config(state="normal")
         
-        # Enable FUSE mount button if we have files (only on non-Windows)
+        # Enable mount button if we have files (works on all platforms with proper drivers)
         if files and hasattr(self, 'mount_btn') and self.mount_btn is not None:
             self.mount_btn.config(state="normal")
         
@@ -1222,43 +1222,73 @@ Digital Equipment Corporation (DEC) computers."""
             self.log(f"Error opening file manager: {e}")
     
     def unmount_fuse(self):
-        """Unmount the FUSE filesystem"""
+        """Unmount the FUSE/WinFsp filesystem"""
         if not self.fuse_mount_point:
             return
         
         try:
             self.log("Unmounting filesystem...")
             
-            # Terminate FUSE process
-            if self.fuse_process and self.fuse_process.poll() is None:
-                self.fuse_process.terminate()
+            # Platform-specific unmounting
+            if sys.platform == "win32":
+                # Windows: Use net use command to disconnect WinFsp drive
                 try:
-                    self.fuse_process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    self.fuse_process.kill()
-            
-            # On macOS, try unmounting with umount
-            if sys.platform == "darwin":
-                try:
-                    subprocess.run(["umount", str(self.fuse_mount_point)], 
-                                 check=True, capture_output=True)
-                except subprocess.CalledProcessError:
-                    pass  # Process termination may have already unmounted
-            
-            # On Linux, try fusermount
-            elif sys.platform.startswith('linux'):
-                try:
-                    subprocess.run(["fusermount", "-u", str(self.fuse_mount_point)], 
-                                 check=True, capture_output=True)
-                except subprocess.CalledProcessError:
-                    pass  # Process termination may have already unmounted
+                    # First try to disconnect the network drive
+                    result = subprocess.run(["net", "use", str(self.fuse_mount_point), "/delete", "/y"], 
+                                          capture_output=True, text=True, creationflags=CREATE_NO_WINDOW)
+                    if result.returncode == 0:
+                        self.log(f"Successfully disconnected drive {self.fuse_mount_point}")
+                    else:
+                        self.log(f"net use command failed: {result.stderr}")
+                        # Try alternative method: terminate the WinFsp process
+                        if self.fuse_process and self.fuse_process.poll() is None:
+                            self.fuse_process.terminate()
+                            try:
+                                self.fuse_process.wait(timeout=5)
+                                self.log("WinFsp process terminated successfully")
+                            except subprocess.TimeoutExpired:
+                                self.fuse_process.kill()
+                                self.log("WinFsp process force-killed")
+                except Exception as e:
+                    self.log(f"Error unmounting WinFsp drive: {e}")
+                    # Fallback: try to terminate process
+                    if self.fuse_process and self.fuse_process.poll() is None:
+                        self.fuse_process.terminate()
+                        try:
+                            self.fuse_process.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            self.fuse_process.kill()
+            else:
+                # Unix systems (macOS/Linux): Terminate FUSE process first
+                if self.fuse_process and self.fuse_process.poll() is None:
+                    self.fuse_process.terminate()
+                    try:
+                        self.fuse_process.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        self.fuse_process.kill()
+                
+                # On macOS, try unmounting with umount
+                if sys.platform == "darwin":
+                    try:
+                        subprocess.run(["umount", str(self.fuse_mount_point)], 
+                                     check=True, capture_output=True)
+                    except subprocess.CalledProcessError:
+                        pass  # Process termination may have already unmounted
+                
+                # On Linux, try fusermount
+                elif sys.platform.startswith('linux'):
+                    try:
+                        subprocess.run(["fusermount", "-u", str(self.fuse_mount_point)], 
+                                     check=True, capture_output=True)
+                    except subprocess.CalledProcessError:
+                        pass  # Process termination may have already unmounted
             
             self.log("Filesystem unmounted successfully.")
             
         except Exception as e:
             self.log(f"Error during unmount: {e}")
         finally:
-            # Reset state (only if button exists - not on Windows)
+            # Reset state for all platforms
             if hasattr(self, 'mount_btn') and self.mount_btn is not None:
                 self.mount_btn.config(text="Mount as Filesystem", command=self.mount_fuse)
             self.fuse_mount_point = None
@@ -1299,6 +1329,54 @@ Digital Equipment Corporation (DEC) computers."""
         
         return None  # No available drive letter found
     
+    def _get_winfsp_mounted_drives(self):
+        """Get list of WinFsp mounted drives on Windows"""
+        if sys.platform != "win32":
+            return []
+        
+        mounted_drives = []
+        try:
+            # Use net use command to list network drives (WinFsp appears as network drives)
+            result = subprocess.run(["net", "use"], capture_output=True, text=True, 
+                                  creationflags=CREATE_NO_WINDOW)
+            
+            if result.returncode == 0 and result.stdout:
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    # Look for lines that indicate WinFsp mounts (they usually contain the drive letter)
+                    if ':' in line and ('WinFsp' in line or 'rt11' in line.lower()):
+                        # Extract drive letter from the line
+                        parts = line.split()
+                        for part in parts:
+                            if len(part) == 2 and part[1] == ':' and part[0].isalpha():
+                                mounted_drives.append(part)
+                                break
+        except Exception as e:
+            self.log(f"Error checking WinFsp mounted drives: {e}")
+        
+        return mounted_drives
+    
+    def _is_winfsp_drive_mounted(self, drive_letter):
+        """Check if a specific drive is a WinFsp mount"""
+        if sys.platform != "win32":
+            return False
+        
+        try:
+            # Check if the drive exists and is accessible
+            test_path = drive_letter + "\\"
+            if os.path.exists(test_path):
+                # Try to list files to see if it's a working WinFsp mount
+                try:
+                    files = os.listdir(test_path)
+                    return True  # If we can list files, it's likely mounted
+                except OSError:
+                    return False
+        except Exception:
+            pass
+        
+        return False
+    
     def _reset_mount_button(self):
         """Reset mount button to initial state"""
         if hasattr(self, 'mount_btn') and self.mount_btn is not None:
@@ -1311,24 +1389,41 @@ Digital Equipment Corporation (DEC) computers."""
     
     def _check_and_unmount_if_needed(self, action_name="proceed"):
         """Check if FUSE/WinFsp is mounted and ask user if they want to unmount"""
+        # First check our internal state
         if hasattr(self, 'fuse_mounted') and self.fuse_mounted and self.fuse_mount_point:
-            # Choose appropriate dialog title based on platform
+            mounted_location = self.fuse_mount_point
+        else:
+            # Also check for any active WinFsp mounts we might not know about
             if sys.platform == "win32":
-                dialog_title = "WinFsp Filesystem Mounted"
+                mounted_drives = self._get_winfsp_mounted_drives()
+                if mounted_drives:
+                    # Found mounted drives, use the first one
+                    mounted_location = mounted_drives[0]
+                    self.fuse_mount_point = mounted_location  # Update our state
+                    self.fuse_mounted = True
+                else:
+                    return True  # No mounts detected
             else:
-                dialog_title = "FUSE Filesystem Mounted"
-                
-            response = messagebox.askyesno(
-                dialog_title,
-                f"A filesystem is currently mounted at:\n{self.fuse_mount_point}\n\n" +
-                f"Do you want to unmount it and {action_name}?"
-            )
-            if response:
-                self.unmount_fuse()
-                return True
-            else:
-                return False
-        return True
+                return True  # No internal mount state
+        
+        # We have an active mount, ask user what to do
+        if sys.platform == "win32":
+            dialog_title = "WinFsp Filesystem Mounted"
+            mount_type = "drive"
+        else:
+            dialog_title = "FUSE Filesystem Mounted"
+            mount_type = "directory"
+            
+        response = messagebox.askyesno(
+            dialog_title,
+            f"A filesystem is currently mounted at {mount_type}:\n{mounted_location}\n\n" +
+            f"Do you want to unmount it and {action_name}?"
+        )
+        if response:
+            self.unmount_fuse()
+            return True
+        else:
+            return False
     
     def on_closing(self):
         """Handle application closing"""
