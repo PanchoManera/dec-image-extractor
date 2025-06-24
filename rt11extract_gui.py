@@ -454,13 +454,18 @@ class RT11ExtractGUI:
             
     def _perform_scan(self, disk_file: str):
         """Perform the actual scan operation"""
+        # Create a temporary directory for list operation to avoid read-only filesystem issues
+        list_dir = self.temp_dir / 'list_output'
+        list_dir.mkdir(exist_ok=True)
+        
         # First run rt11extract in list mode to get file info with dates
+        # Use -o parameter to specify output directory to avoid read-only filesystem errors
         if getattr(sys, 'frozen', False):
             # Running as bundled executable - run rt11extract directly (it's included in bundle)
-            cmd_list = [str(rt11extract_path), disk_file, '-l']
+            cmd_list = [str(rt11extract_path), disk_file, '-l', '-o', str(list_dir)]
         else:
             # Running as script - run rt11extract with python (it's a python script)
-            cmd_list = [sys.executable, str(rt11extract_path), disk_file, '-l']
+            cmd_list = [sys.executable, str(rt11extract_path), disk_file, '-l', '-o', str(list_dir)]
         self.log(f"Running: {' '.join(cmd_list)}")
         
         list_result = subprocess.run(cmd_list, **self._get_subprocess_kwargs())
