@@ -955,13 +955,23 @@ Digital Equipment Corporation (DEC) computers."""
         
         # Determine which FUSE script to use based on platform
         if sys.platform == "win32":
-            fuse_script = script_dir / "rt11_mount.bat"
+            fuse_script_name = "rt11_mount.bat"
         else:
-            fuse_script = script_dir / "rt11_fuse.sh"
+            fuse_script_name = "rt11_fuse.sh"
+        
+        # Find FUSE script in appropriate location
+        if getattr(sys, 'frozen', False) and str(script_dir).endswith('.app/Contents/MacOS'):
+            # In macOS bundle, FUSE scripts are in Resources/
+            resources_dir = script_dir.parent / "Resources"
+            fuse_script = resources_dir / fuse_script_name
+        else:
+            # Not in bundle or not macOS, look in script directory
+            fuse_script = script_dir / fuse_script_name
+            
         if not fuse_script.exists():
             messagebox.showerror("FUSE Driver Not Found", 
                 f"FUSE driver script not found: {fuse_script}\n\n" +
-                "Please ensure rt11_fuse.sh is in the same directory.")
+                f"Please ensure {fuse_script_name} is in the same directory.")
             return
         
         # Create mount point - different approach for Windows vs Unix
