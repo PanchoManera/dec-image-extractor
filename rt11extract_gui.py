@@ -93,6 +93,12 @@ class RT11ExtractGUI:
         self.set_application_icon()
         
         self.check_rt11extract()
+        
+        # Debug CLI path resolution
+        self.log(f"DEBUG: Resolved CLI path: {rt11extract_path}")
+        self.log(f"DEBUG: CLI exists: {rt11extract_path.exists() if rt11extract_path else False}")
+        self.log(f"DEBUG: Running as frozen: {getattr(sys, 'frozen', False)}")
+        self.log(f"DEBUG: Script directory: {script_dir}")
     
     def set_application_icon(self):
         """Set custom application icon for main window and all dialogs"""
@@ -458,6 +464,13 @@ class RT11ExtractGUI:
         self.log(f"Running: {' '.join(cmd_list)}")
         
         list_result = subprocess.run(cmd_list, **self._get_subprocess_kwargs())
+        
+        # Debug: log the CLI output for date parsing
+        self.log(f"DEBUG: List command returncode: {list_result.returncode}")
+        if list_result.stdout:
+            self.log(f"DEBUG: List command output (first 500 chars): {list_result.stdout[:500]}")
+        if list_result.stderr:
+            self.log(f"DEBUG: List command stderr: {list_result.stderr}")
         
         # Then run rt11extract to actually extract files for verification
         scan_dir = self.temp_dir / 'scan_output'
