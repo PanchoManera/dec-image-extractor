@@ -458,24 +458,9 @@ class RT11ExtractGUI:
         list_dir = self.temp_dir / 'list_output'
         list_dir.mkdir(exist_ok=True)
         
-        # First run rt11extract in list mode to get file info with dates
-        # Use -o parameter to specify output directory to avoid read-only filesystem errors
-        if getattr(sys, 'frozen', False):
-            # Running as bundled executable - run rt11extract directly (it's included in bundle)
-            cmd_list = [str(rt11extract_path), disk_file, '-l', '-o', str(list_dir)]
-        else:
-            # Running as script - run rt11extract with python (it's a python script)
-            cmd_list = [sys.executable, str(rt11extract_path), disk_file, '-l', '-o', str(list_dir)]
-        self.log(f"Running: {' '.join(cmd_list)}")
-        
-        list_result = subprocess.run(cmd_list, **self._get_subprocess_kwargs())
-        
-        # Debug: log the CLI output for date parsing
-        self.log(f"DEBUG: List command returncode: {list_result.returncode}")
-        if list_result.stdout:
-            self.log(f"DEBUG: List command output (first 500 chars): {list_result.stdout[:500]}")
-        if list_result.stderr:
-            self.log(f"DEBUG: List command stderr: {list_result.stderr}")
+        # Skip the list command as it doesn't support -o parameter and fails in App Translocation
+        # We'll extract dates from the extraction output instead
+        list_result = None
         
         # Then run rt11extract to actually extract files for verification
         scan_dir = self.temp_dir / 'scan_output'
@@ -505,7 +490,7 @@ class RT11ExtractGUI:
         
         if result.returncode == 0:
             # Parse extracted files
-            files = self._parse_extracted_files(scan_dir, result.stdout, list_result.stdout)
+            files = self._parse_extracted_files(scan_dir, result.stdout, None)
             self.current_files = files
             
             # Update UI in main thread
@@ -558,43 +543,29 @@ class RT11ExtractGUI:
         """Parse extracted files to get file information"""
         files = []
         
-        # First parse the list output to get dates
+        # Parse the extraction output to get dates (since list command was removed)
         date_map = {}
-        if list_output:
-            lines = list_output.split('\n')
+        if output:
+            lines = output.split('\n')
             for line in lines:
                 line = line.strip()
-                # Look for lines with data that match the table format
-                # Skip header lines, separators, and summary lines
-                if (line and not line.startswith('-') and not line.startswith('=') and 
-                    'Filename' not in line and 'Type' not in line and 
-                    'Total files:' not in line and 'RT-11 Directory Listing:' not in line and
-                    'RT-11 Extractor' not in line and 'Processing:' not in line and
-                    line != '' and len(line.split()) >= 5):
-                    
-                    # Split the line into parts - use more flexible parsing
-                    parts = line.split()
-                    
-                    # Look for date pattern in the line (YYYY-MM-DD)
-                    date_str = None
-                    filename = parts[0] if parts else None
-                    
-                    # Search for date pattern in all parts
-                    for part in parts:
-                        if '-' in part and len(part.split('-')) == 3:
-                            try:
-                                # Check if it looks like a date
-                                year, month, day = part.split('-')
+                # Look for lines that show "Applied date YYYY-MM-DD to FILENAME"
+                if "Applied date" in line and " to " in line:
+                    try:
+                        # Extract date and filename from "Applied date 1985-12-20 to SWAP.SYS"
+                        parts = line.split()
+                        if len(parts) >= 5 and parts[0] == "Applied" and parts[1] == "date":
+                            date_str = parts[2]  # Should be YYYY-MM-DD format
+                            filename = parts[4]  # Should be the filename
+                            
+                            # Validate date format
+                            if '-' in date_str and len(date_str.split('-')) == 3:
+                                year, month, day = date_str.split('-')
                                 if (len(year) == 4 and len(month) == 2 and len(day) == 2 and
                                     year.isdigit() and month.isdigit() and day.isdigit()):
-                                    date_str = part
-                                    break
-                            except (ValueError, IndexError):
-                                continue
-                    
-                    # If we found both filename and date, add to map
-                    if filename and date_str:
-                        date_map[filename] = date_str
+                                    date_map[filename] = date_str
+                    except (ValueError, IndexError):
+                        continue
         
         # Get files from directory
         for file_path in scan_dir.rglob('*'):
