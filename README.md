@@ -27,7 +27,7 @@ python3 rt11extract_gui.py
 ```
 *Supports both DSK and IMD files with automatic conversion*
 
-![Desktop GUI](screenshots/desktopgui.png?v=2.1.0)
+![Desktop GUI](screenshots/desktopgui-v2.png)
 
 ### Option 2: Command Line Extraction
 ```bash
