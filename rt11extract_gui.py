@@ -982,8 +982,15 @@ Digital Equipment Corporation (DEC) computers."""
                 messagebox.showerror("Error", "No available drive letters found. Please free up a drive letter and try again.")
                 return
         else:
-            # Unix: Create directory mount point
-            mount_dir = script_dir / "rt11_mounted"
+            # Unix: Create directory mount point in user's home directory
+            # This avoids App Translocation read-only issues on macOS
+            if getattr(sys, 'frozen', False) and sys.platform == 'darwin':
+                # For bundled macOS apps, use ~/rt11_mounted to avoid App Translocation issues
+                mount_dir = Path.home() / "rt11_mounted"
+            else:
+                # For scripts or other platforms, use script directory
+                mount_dir = script_dir / "rt11_mounted"
+                
             try:
                 # Clean up any existing mount first
                 if mount_dir.exists():
