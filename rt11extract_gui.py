@@ -1437,9 +1437,9 @@ Digital Equipment Corporation (DEC) computers."""
         except Exception as e:
             self.log(f"Error checking net use: {e}")
         
-        # Method 2: Check all drive letters for WinFsp characteristics
+        # Method 2: Check all drive letters for WinFsp characteristics (more specific criteria)
         try:
-            self.log("Method 2: Scanning all drive letters...")
+            self.log("Method 2: Scanning all drive letters for WinFsp...")
             import string
             for letter in string.ascii_uppercase:
                 drive = f"{letter}:"
@@ -1451,16 +1451,46 @@ Digital Equipment Corporation (DEC) computers."""
                     drive_path = drive + "\\"
                     # Check if drive exists and is accessible
                     if os.path.exists(drive_path):
-                        # Try to detect if it's a WinFsp mount by checking filesystem properties
+                        # Try to detect if it's a WinFsp mount by checking multiple criteria
                         try:
-                            # If we can list files, it might be a WinFsp mount
                             files = os.listdir(drive_path)
-                            # Additional check: see if it looks like RT-11 files
-                            rt11_like = any(f.endswith(('.SAV', '.DAT', '.TXT', '.BAS', '.FOR')) for f in files)
-                            if files and (rt11_like or len(files) < 50):  # RT-11 typically has few files
-                                self.log(f"Found potential WinFsp drive via scan: {drive} (files: {len(files)}, RT-11-like: {rt11_like})")
+                            
+                            # More specific RT-11 detection criteria
+                            rt11_extensions = ['.SAV', '.DAT', '.TXT', '.BAS', '.FOR', '.MAC', '.OBJ', '.REL']
+                            rt11_like_files = [f for f in files if any(f.upper().endswith(ext) for ext in rt11_extensions)]
+                            
+                            # Check for typical RT-11 filenames (uppercase, short names)
+                            typical_rt11_names = any(
+                                len(f.split('.')[0]) <= 6 and f.isupper() and '.' in f
+                                for f in files if '.' in f
+                            )
+                            
+                            # Exclude known non-WinFsp drives
+                            is_network_drive = any(keyword in drive_path.lower() for keyword in ['icloud', 'onedrive', 'dropbox', 'google'])
+                            
+                            # Only consider it WinFsp if:
+                            # 1. Has RT-11-like files AND typical RT-11 naming pattern
+                            # 2. Not a known cloud/network drive
+                            # 3. Small number of files (RT-11 disks typically have < 30 files)
+                            if (len(rt11_like_files) >= 2 and typical_rt11_names and 
+                                not is_network_drive and len(files) <= 30):
+                                self.log(f"Found WinFsp drive via scan: {drive} (files: {len(files)}, RT-11 files: {len(rt11_like_files)}, typical names: {typical_rt11_names})")
                                 if drive not in mounted_drives:
                                     mounted_drives.append(drive)
+                            else:
+                                # Log why it was rejected
+                                rejection_reasons = []
+                                if len(rt11_like_files) < 2:
+                                    rejection_reasons.append(f"insufficient RT-11 files ({len(rt11_like_files)})")
+                                if not typical_rt11_names:
+                                    rejection_reasons.append("no typical RT-11 naming pattern")
+                                if is_network_drive:
+                                    rejection_reasons.append("appears to be network/cloud drive")
+                                if len(files) > 30:
+                                    rejection_reasons.append(f"too many files ({len(files)})")
+                                
+                                self.log(f"Skipping {drive}: {', '.join(rejection_reasons)}")
+                                
                         except (OSError, PermissionError):
                             # Can't list files, might not be a WinFsp mount
                             pass
