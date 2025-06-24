@@ -1407,31 +1407,93 @@ Digital Equipment Corporation (DEC) computers."""
         return None  # No available drive letter found
     
     def _get_winfsp_mounted_drives(self):
-        """Get list of WinFsp mounted drives on Windows"""
+        """Get list of WinFsp mounted drives on Windows using multiple detection methods"""
         if sys.platform != "win32":
             return []
         
         mounted_drives = []
+        self.log("Checking for active WinFsp mounts...")
+        
+        # Method 1: Check net use output (WinFsp may appear as network drives)
         try:
-            # Use net use command to list network drives (WinFsp appears as network drives)
+            self.log("Method 1: Checking 'net use' output...")
             result = subprocess.run(["net", "use"], capture_output=True, text=True, 
-                                  creationflags=CREATE_NO_WINDOW)
+                                  creationflags=CREATE_NO_WINDOW, timeout=10)
+            
+            if result.returncode == 0 and result.stdout:
+                self.log(f"net use output: {result.stdout}")
+                lines = result.stdout.split('\n')
+                for line in lines:
+                    line = line.strip()
+                    # Look for lines that indicate WinFsp mounts
+                    if ':' in line and ('WinFsp' in line or 'rt11' in line.lower() or 'fuse' in line.lower()):
+                        # Extract drive letter from the line
+                        parts = line.split()
+                        for part in parts:
+                            if len(part) == 2 and part[1] == ':' and part[0].isalpha():
+                                self.log(f"Found WinFsp drive via net use: {part}")
+                                mounted_drives.append(part)
+                                break
+        except Exception as e:
+            self.log(f"Error checking net use: {e}")
+        
+        # Method 2: Check all drive letters for WinFsp characteristics
+        try:
+            self.log("Method 2: Scanning all drive letters...")
+            import string
+            for letter in string.ascii_uppercase:
+                drive = f"{letter}:"
+                # Skip common system drives
+                if letter in ['A', 'B', 'C']:
+                    continue
+                
+                try:
+                    drive_path = drive + "\\"
+                    # Check if drive exists and is accessible
+                    if os.path.exists(drive_path):
+                        # Try to detect if it's a WinFsp mount by checking filesystem properties
+                        try:
+                            # If we can list files, it might be a WinFsp mount
+                            files = os.listdir(drive_path)
+                            # Additional check: see if it looks like RT-11 files
+                            rt11_like = any(f.endswith(('.SAV', '.DAT', '.TXT', '.BAS', '.FOR')) for f in files)
+                            if files and (rt11_like or len(files) < 50):  # RT-11 typically has few files
+                                self.log(f"Found potential WinFsp drive via scan: {drive} (files: {len(files)}, RT-11-like: {rt11_like})")
+                                if drive not in mounted_drives:
+                                    mounted_drives.append(drive)
+                        except (OSError, PermissionError):
+                            # Can't list files, might not be a WinFsp mount
+                            pass
+                except OSError:
+                    # Drive doesn't exist or not accessible
+                    pass
+        except Exception as e:
+            self.log(f"Error scanning drive letters: {e}")
+        
+        # Method 3: Check using wmic (Windows Management Instrumentation)
+        try:
+            self.log("Method 3: Checking via wmic...")
+            result = subprocess.run(["wmic", "logicaldisk", "get", "size,freespace,caption,description,filesystem"], 
+                                  capture_output=True, text=True, 
+                                  creationflags=CREATE_NO_WINDOW, timeout=10)
             
             if result.returncode == 0 and result.stdout:
                 lines = result.stdout.split('\n')
                 for line in lines:
                     line = line.strip()
-                    # Look for lines that indicate WinFsp mounts (they usually contain the drive letter)
-                    if ':' in line and ('WinFsp' in line or 'rt11' in line.lower()):
-                        # Extract drive letter from the line
+                    # Look for drives with unusual filesystems that might be WinFsp
+                    if ':' in line and ('fuse' in line.lower() or line.count(' ') > 5):
                         parts = line.split()
                         for part in parts:
                             if len(part) == 2 and part[1] == ':' and part[0].isalpha():
-                                mounted_drives.append(part)
+                                self.log(f"Found potential WinFsp drive via wmic: {part}")
+                                if part not in mounted_drives:
+                                    mounted_drives.append(part)
                                 break
         except Exception as e:
-            self.log(f"Error checking WinFsp mounted drives: {e}")
+            self.log(f"Error checking wmic: {e}")
         
+        self.log(f"Total WinFsp drives detected: {mounted_drives}")
         return mounted_drives
     
     def _is_winfsp_drive_mounted(self, drive_letter):
