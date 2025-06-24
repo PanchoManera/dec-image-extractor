@@ -76,16 +76,42 @@ class RT11ExtractorWrapper:
     
     def __init__(self, image_path: str):
         self.image_path = Path(image_path)
-        self.rt11extract_path = Path(__file__).parent / "rt11extract"
         self.logger = logging.getLogger('RT11-Extractor')
         self._file_data_cache = {}  # Cache para datos de archivos
         
+        # Find rt11extract in different possible locations
+        script_dir = Path(__file__).parent
+        possible_paths = [
+            script_dir / "rt11extract_cli",  # Standalone executable (preferred)
+            script_dir / "rt11extract",      # Script version
+            script_dir.parent / "MacOS" / "rt11extract_cli",  # In macOS bundle MacOS folder
+            script_dir.parent.parent / "MacOS" / "rt11extract_cli",  # Alternative bundle path
+        ]
+        
+        self.rt11extract_path = None
+        for path in possible_paths:
+            if path.exists():
+                self.rt11extract_path = path
+                self.logger.info(f"Found rt11extract at: {path}")
+                break
+        
         # Verificar que el extractor existe
-        if not self.rt11extract_path.exists():
-            raise Exception(f"rt11extract no encontrado en {self.rt11extract_path}")
+        if not self.rt11extract_path:
+            # Try to find it in PATH as last resort
+            import shutil
+            system_rt11extract = shutil.which("rt11extract_cli") or shutil.which("rt11extract")
+            if system_rt11extract:
+                self.rt11extract_path = Path(system_rt11extract)
+                self.logger.info(f"Found rt11extract in PATH: {self.rt11extract_path}")
+            else:
+                raise Exception(f"rt11extract no encontrado en ninguna ubicación. Intenté: {[str(p) for p in possible_paths]}")
         
         # Hacer el extractor ejecutable
-        os.chmod(self.rt11extract_path, 0o755)
+        try:
+            os.chmod(self.rt11extract_path, 0o755)
+        except (OSError, PermissionError):
+            # Ignore chmod errors for system executables
+            pass
         
     def list_files(self) -> List[RT11FileEntry]:
         """Obtener lista de archivos extrayendo a directorio temporal"""
