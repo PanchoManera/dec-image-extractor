@@ -1558,22 +1558,22 @@ Digital Equipment Corporation (DEC) computers."""
     
     def _check_and_unmount_if_needed(self, action_name="proceed"):
         """Check if FUSE/WinFsp is mounted and ask user if they want to unmount"""
-        # First check our internal state
+        # Only check our internal state for now (disable external WinFsp detection to avoid false positives)
         if hasattr(self, 'fuse_mounted') and self.fuse_mounted and self.fuse_mount_point:
             mounted_location = self.fuse_mount_point
         else:
-            # Also check for any active WinFsp mounts we might not know about
-            if sys.platform == "win32":
-                mounted_drives = self._get_winfsp_mounted_drives()
-                if mounted_drives:
-                    # Found mounted drives, use the first one
-                    mounted_location = mounted_drives[0]
-                    self.fuse_mount_point = mounted_location  # Update our state
-                    self.fuse_mounted = True
-                else:
-                    return True  # No mounts detected
-            else:
-                return True  # No internal mount state
+            # TODO: Re-enable automatic WinFsp detection after improving accuracy
+            # External WinFsp detection temporarily disabled due to false positives with network drives
+            # if sys.platform == "win32":
+            #     mounted_drives = self._get_winfsp_mounted_drives()
+            #     if mounted_drives:
+            #         mounted_location = mounted_drives[0]
+            #         self.fuse_mount_point = mounted_location
+            #         self.fuse_mounted = True
+            #     else:
+            #         return True
+            # else:
+            return True  # No mount state to check
         
         # We have an active mount, ask user what to do
         if sys.platform == "win32":
