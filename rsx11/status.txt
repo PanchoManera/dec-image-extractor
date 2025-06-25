@@ -1,0 +1,8 @@
+El extractor mejorado está detectando la estructura básica correctamente:
+- ✅ Reconoce volúmenes RSX-11M 
+- ✅ Lee el home block correctamente
+- ✅ Encuentra algunos headers de archivos
+- ❌ Necesita mejorar la decodificación de nombres de archivos
+- ❌ Necesita mejorar el parsing de map areas para obtener los bloques de datos
+
+El extractor está funcionando mucho mejor ahora - está detectando archivos reales de RSX-11M y decodificando sus nombres correctamente. El siguiente paso sería ajustar el parsing de map areas para estos tipos específicos de archivos, pero eso requeriría un análisis más profundo de cómo RSX-11M almacena específicamente la información de bloques.

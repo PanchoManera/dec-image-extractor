@@ -1,0 +1,2235 @@
+#!/usr/bin/env python3
+"""
+Universal PDP-11 Disk Image Extractor v3.0
+
+Supports multiple filesystem types:
+- RT-11 filesystem (all versions)
+- Unix V5, V6, V7 filesystems
+- Early BSD variants
+
+RT-11 Features:
+- Complete RT-11 directory structure validation
+- Home block verification
+- Bad block detection and handling
+- Multi-segment directory support
+- Advanced RADIX-50 decoding
+
+Unix Features:
+- Unix V5/V6/V7 filesystem support
+- Automatic filesystem detection
+- Recursive directory extraction
+- Unix permissions and dates
+
+Common Features:
+- Automatic filesystem type detection
+- Comprehensive error logging
+- Multiple output formats
+- File integrity validation
+"""
+
+import struct
+import sys
+import os
+import argparse
+import logging
+import hashlib
+import time
+import datetime
+import io
+import string
+from pathlib import Path
+from typing import List, Tuple, Optional, Dict, Any, Union
+from dataclasses import dataclass, field
+from enum import Enum, IntEnum
+from datetime import datetime, date
+
+# Enhanced RT-11 and Unix Constants from official documentation
+class RT11Constants:
+    """RT-11 filesystem constants from official documentation"""
+    BLOCK_SIZE = 512
+    HOME_BLOCK = 1
+    FIRST_DIR_BLOCK = 6
+    MAX_FILENAME_LENGTH = 6
+    MAX_FILETYPE_LENGTH = 3
+    DIRECTORY_ENTRY_SIZE = 14
+    SEGMENT_SIZE = 1024  # Standard RT-11 segment size
+    MAX_SEGMENTS = 31
+    
+    # Directory status bits (from RT-11 documentation)
+    STATUS_PERMANENT = 0x0000  # Permanent file
+    STATUS_TENTATIVE = 0x0100  # Tentative file (0400 octal)
+    STATUS_UNUSED = 0x0200     # Unused area (1000 octal)
+    STATUS_PERMANENT2 = 0x0400  # Permanent file (2000 octal)
+    STATUS_END_MARKER = 0x0800 # End of segment (4000 octal)
+    STATUS_PROTECTED = 0x8400  # Protected permanent file (102000 octal)
+
+class DeviceType(Enum):
+    """RT-11 supported device types from documentation"""
+    RK05 = "RK05 Disk Cartridge"
+    RK06 = "RK06/RK07 Disk Cartridge"
+    RL01 = "RL01/RL02 Disk Cartridge"
+    RX01 = "RX01 Diskette"
+    RX02 = "RX02 Diskette"
+    DX = "DX Diskette"
+    DY = "DY Diskette"
+    MM = "MM Magtape"
+    MT = "MT Magtape"
+    GENERIC = "Generic RT-11 Volume"
+
+class FileType(Enum):
+    """Standard RT-11 file types from documentation"""
+    SAV = "Executable Program"
+    OBJ = "Object File"
+    MAC = "MACRO Source"
+    FOR = "FORTRAN Source"
+    REL = "Relocatable Binary"
+    LDA = "Absolute Binary"
+    STB = "Symbol Table"
+    LST = "Listing File"
+    MAP = "Link Map"
+    SYS = "System File"
+    TMP = "Temporary File"
+    BAK = "Backup File"
+    LOG = "Log File"
+    BAD = "Bad Block File"
+    DAT = "Data File"
+    TXT = "Text File"
+    DOC = "Documentation"
+    UNKNOWN = "Unknown Type"
+
+# Enhanced RADIX-50 character set from RT-11 documentation
+RAD50_CHARS = ' ABCDEFGHIJKLMNOPQRSTUVWXYZ$.?0123456789'
+
+# RT-11 file status flags (corrected from documentation)
+# Status word values from RT-11 Volume and File Formats Manual
+E_TENT = 0o400    # 256 decimal - Tentative file
+E_MPTY = 0o1000   # 512 decimal - Empty area (UNUSED)
+E_PERM = 0o2000   # 1024 decimal - Permanent file
+E_PROT = 0o102000 # 33792 decimal - Protected permanent file
+E_EOS = 0o4000    # 2048 decimal - End-of-segment marker
+
+@dataclass
+class HomeBlock:
+    """RT-11 Home Block structure from documentation"""
+    valid: bool = False
+    cluster_size: int = 1
+    first_dir_block: int = 6
+    system_version: int = 0
+    volume_id: str = ""
+    owner_name: str = ""
+    device_type: DeviceType = DeviceType.GENERIC
+    total_blocks: int = 0
+    checksum: int = 0
+
+@dataclass
+class DirectoryHeader:
+    """RT-11 Directory header structure"""
+    segments_available: int = 0
+    next_segment: int = 0
+    highest_segment: int = 0
+    extra_bytes: int = 0
+    start_block: int = 0
+    valid: bool = False
+
+@dataclass 
+class RT11FileEntry:
+    """Enhanced RT-11 file entry with full validation"""
+    filename: str
+    file_type: str
+    status: int
+    start_block: int
+    length: int
+    creation_date: Optional[int] = None
+    job_channel: int = 0
+    segment: int = 0
+    offset: int = 0
+    entry_size: int = 14
+    extra_data: bytes = field(default_factory=bytes)
+    
+    @property
+    def is_valid(self) -> bool:
+        """Check if this is a valid file entry"""
+        return (self.status != 0 and 
+                self.filename.strip() != '' and
+                not self.is_end_marker and
+                not self.is_unused)
+    
+    @property
+    def is_permanent(self) -> bool:
+        """Check if file is permanent (enhanced from rt11fs.py)"""
+        return (self.status & E_PERM) == E_PERM
+    
+    @property
+    def is_tentative(self) -> bool:
+        """Check if file is tentative (enhanced from rt11fs.py)"""
+        return (self.status & E_TENT) == E_TENT
+    
+    @property
+    def is_protected(self) -> bool:
+        """Check if file is protected (enhanced from rt11fs.py)"""
+        return (self.status & E_PROT) == E_PROT
+    
+    @property
+    def is_unused(self) -> bool:
+        """Check if this is an unused area (enhanced from rt11fs.py)"""
+        return (self.status & E_MPTY) == E_MPTY
+    
+    @property
+    def is_end_marker(self) -> bool:
+        """Check if this is end of segment marker (enhanced from rt11fs.py)"""
+        return (self.status & E_EOS) == E_EOS
+    
+    @property
+    def full_filename(self) -> str:
+        """Return full filename with extension"""
+        name = self.filename.strip()
+        ext = self.file_type.strip()
+        if ext:
+            return f"{name}.{ext}"
+        return name
+    
+    @property
+    def file_category(self) -> FileType:
+        """Determine file category based on extension"""
+        ext = self.file_type.strip().upper()
+        try:
+            return FileType[ext]
+        except KeyError:
+            return FileType.UNKNOWN
+    
+    @property
+    def status_description(self) -> str:
+        """Human-readable status description"""
+        parts = []
+        if self.is_permanent:
+            parts.append("PERMANENT")
+        if self.is_tentative:
+            parts.append("TENTATIVE")
+        if self.is_protected:
+            parts.append("PROTECTED")
+        if self.is_unused:
+            parts.append("UNUSED")
+        if self.is_end_marker:
+            parts.append("END_MARKER")
+        return ", ".join(parts) if parts else "NORMAL"
+    
+    @property
+    def size_bytes(self) -> int:
+        """File size in bytes"""
+        return self.length * RT11Constants.BLOCK_SIZE
+
+class RT11Exception(Exception):
+    """Base exception for RT-11 related errors"""
+    pass
+
+class RT11ValidationError(RT11Exception):
+    """Raised when RT-11 structure validation fails"""
+    pass
+
+class RT11CorruptionError(RT11Exception):
+    """Raised when corruption is detected"""
+    pass
+
+class RT11Extractor:
+    """Advanced RT-11 disk image extractor with comprehensive validation"""
+    
+    def __init__(self, image_path: str, verbose: bool = False, strict: bool = True):
+        self.image_path = Path(image_path)
+        self.verbose = verbose
+        self.strict = strict  # If False, continue despite errors
+        self.image_data = None
+        self.directory_entries: List[RT11FileEntry] = []
+        self.home_block: Optional[HomeBlock] = None
+        self.directory_headers: List[DirectoryHeader] = []
+        self.bad_blocks: List[int] = []
+        self.errors: List[str] = []
+        self.warnings: List[str] = []
+        
+        # Setup logging
+        self._setup_logging()
+        
+    def _setup_logging(self) -> None:
+        """Setup comprehensive logging system"""
+        log_level = logging.DEBUG if self.verbose else logging.INFO
+        logging.basicConfig(
+            level=log_level,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.StreamHandler(sys.stdout),
+                logging.FileHandler(f"rt11extract_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+            ]
+        )
+        self.logger = logging.getLogger(__name__)
+        
+    def _log_error(self, message: str) -> None:
+        """Log an error and add to error list"""
+        self.errors.append(message)
+        self.logger.error(message)
+        
+    def _log_warning(self, message: str) -> None:
+        """Log a warning and add to warning list"""
+        self.warnings.append(message)
+        self.logger.warning(message)
+        
+    def _log_info(self, message: str) -> None:
+        """Log informational message"""
+        self.logger.info(message)
+        
+    def _read_block(self, block_num: int) -> bytes:
+        """Read a block with error handling and bad block detection"""
+        if not self.image_data:
+            raise RT11Exception("Image not loaded")
+            
+        offset = block_num * RT11Constants.BLOCK_SIZE
+        if offset + RT11Constants.BLOCK_SIZE > len(self.image_data):
+            error_msg = f"Block {block_num} beyond image size"
+            self._log_error(error_msg)
+            if self.strict:
+                raise RT11ValidationError(error_msg)
+            return b'\x00' * RT11Constants.BLOCK_SIZE
+            
+        try:
+            data = self.image_data[offset:offset + RT11Constants.BLOCK_SIZE]
+            
+            # Basic validation - check for all zeros (potential bad block)
+            if data == b'\x00' * RT11Constants.BLOCK_SIZE:
+                self._log_warning(f"Block {block_num} appears to be zeroed (potential bad block)")
+                if block_num not in self.bad_blocks:
+                    self.bad_blocks.append(block_num)
+                    
+            return data
+            
+        except Exception as e:
+            error_msg = f"Error reading block {block_num}: {e}"
+            self._log_error(error_msg)
+            if self.strict:
+                raise RT11Exception(error_msg)
+            return b'\x00' * RT11Constants.BLOCK_SIZE
+    
+    def _radix50_decode(self, word: int) -> str:
+        """Decode Radix-50 with enhanced validation (improved from rt11fs.py)"""
+        if word == 0:
+            return "   "
+            
+        result = ""
+        temp_word = word
+        
+        for i in range(3):
+            char_index = temp_word % 40
+            if char_index >= len(RAD50_CHARS):
+                self._log_warning(f"Invalid Radix-50 character index: {char_index} in word {word:04X}")
+                result = "?" + result
+            else:
+                result = RAD50_CHARS[char_index] + result
+            temp_word //= 40
+            
+        return result
+    
+    def _radix50_encode(self, text: str) -> int:
+        """Encode text to Radix-50 (from rt11fs.py)"""
+        text = text.upper().ljust(3)[:3]  # Pad to 3 chars, truncate if longer
+        result = 0
+        for char in text:
+            try:
+                index = RAD50_CHARS.index(char)
+            except ValueError:
+                index = 0  # Space for invalid chars
+            result = result * 40 + index
+        return result
+    
+    def _decode_rt11_filename(self, word1: int, word2: int, word3: int) -> Optional[str]:
+        """Decode RT-11 filename from 3 RAD50 words with validation"""
+        try:
+            part1 = self._radix50_decode(word1)
+            part2 = self._radix50_decode(word2)  
+            part3 = self._radix50_decode(word3)
+            
+            filename = (part1 + part2).rstrip()
+            file_type = part3.rstrip()
+            
+            # Validate filename characters
+            if not filename or len(filename) > RT11Constants.MAX_FILENAME_LENGTH:
+                return None
+                
+            if file_type and len(file_type) > RT11Constants.MAX_FILETYPE_LENGTH:
+                return None
+            
+            return filename, file_type
+            
+        except Exception as e:
+            self._log_warning(f"Error decoding filename: {e}")
+            return None
+    
+    def _decode_rt11_date(self, date_word: int) -> Optional[str]:
+        """Decode RT-11 date format with validation (corrected format)"""
+        if date_word == 0:
+            return None
+        
+        try:
+            # RT-11 date format (correct from rt11fs.py):
+            # Bits 0-4: year base (from 1972)
+            # Bits 5-9: day  
+            # Bits 10-13: month
+            # Bits 14-15: age/era (adds 32 years per increment)
+            year_base = date_word & 0x1F  # bits 0-4
+            day = (date_word >> 5) & 0x1F  # bits 5-9
+            month = (date_word >> 10) & 0x0F  # bits 10-13
+            age = (date_word >> 14) & 0x03  # bits 14-15
+            
+            year = year_base + 1972 + (age * 32)
+            
+            # Handle zero values
+            if day == 0:
+                day = 1
+            if month == 0:
+                month = 1
+                
+            if 1 <= month <= 12 and 1 <= day <= 31 and 1972 <= year <= 2099:
+                return f"{year:04d}-{month:02d}-{day:02d}"
+                
+        except Exception as e:
+            self._log_warning(f"Error decoding date {date_word:04X}: {e}")
+            
+        return None
+    
+    def _validate_home_block(self, data: bytes) -> HomeBlock:
+        """Validate and parse RT-11 home block structure"""
+        if len(data) < RT11Constants.BLOCK_SIZE:
+            raise RT11ValidationError("Home block too small")
+            
+        home_block = HomeBlock()
+        
+        try:
+            # Basic RT-11 home block validation
+            # Check for reasonable values - format varies by RT-11 version
+            
+            # Try to find recognizable patterns
+            words = struct.unpack('<256H', data) if len(data) >= 512 else []
+            
+            # Look for directory start indicator
+            for i, word in enumerate(words[:50]):
+                if 2 <= word <= 50:  # Reasonable directory start block
+                    home_block.first_dir_block = word
+                    break
+            else:
+                home_block.first_dir_block = RT11Constants.FIRST_DIR_BLOCK
+                
+            # Look for volume information
+            ascii_data = data.replace(b'\x00', b' ').decode('ascii', errors='ignore')
+            printable_parts = [part.strip() for part in ascii_data.split() if len(part.strip()) > 2]
+            
+            if printable_parts:
+                home_block.volume_id = printable_parts[0][:12]  # First reasonable string
+                
+            home_block.valid = True
+            home_block.total_blocks = len(self.image_data) // RT11Constants.BLOCK_SIZE
+            
+            self._log_info(f"Home block validated - first dir block: {home_block.first_dir_block}")
+            
+        except Exception as e:
+            self._log_warning(f"Home block validation failed: {e}")
+            home_block.valid = False
+            home_block.first_dir_block = RT11Constants.FIRST_DIR_BLOCK
+            
+        return home_block
+    
+    def _detect_device_type(self) -> DeviceType:
+        """Auto-detect RT-11 device type based on image characteristics"""
+        if not self.image_data:
+            return DeviceType.GENERIC
+            
+        image_size = len(self.image_data)
+        
+        # Size-based detection (common RT-11 media sizes)
+        size_map = {
+            256256: DeviceType.RX01,    # RX01 (256KB)
+            512512: DeviceType.RX02,    # RX02 (512KB)
+            2457600: DeviceType.RK05,   # RK05 (2.4MB)
+            14307840: DeviceType.RK06,  # RK06 (13.6MB)
+            5242880: DeviceType.RL01,   # RL01 (5MB)
+            10485760: DeviceType.RL01,  # RL02 (10MB)
+        }
+        
+        return size_map.get(image_size, DeviceType.GENERIC)
+    
+    def _parse_directory_header(self, data: bytes) -> DirectoryHeader:
+        """Parse RT-11 directory header with validation"""
+        if len(data) < 10:
+            raise RT11ValidationError("Directory header too small")
+            
+        header = DirectoryHeader()
+        
+        try:
+            # RT-11 directory header format (5 words = 10 bytes)
+            words = struct.unpack('<5H', data[:10])
+            
+            header.segments_available = words[0]
+            header.next_segment = words[1]
+            header.highest_segment = words[2]
+            header.extra_bytes = words[3]
+            header.start_block = words[4]
+            
+            # Validation
+            if (1 <= header.segments_available <= RT11Constants.MAX_SEGMENTS and
+                header.next_segment <= RT11Constants.MAX_SEGMENTS and
+                header.highest_segment <= RT11Constants.MAX_SEGMENTS and
+                header.extra_bytes <= 100 and
+                header.start_block < 10000):
+                
+                header.valid = True
+                self._log_info(f"Valid directory header: segments={header.segments_available}, next={header.next_segment}")
+            else:
+                self._log_warning(f"Invalid directory header values")
+                
+        except Exception as e:
+            self._log_warning(f"Error parsing directory header: {e}")
+            
+        return header
+    
+    def _parse_directory_entry(self, data: bytes, offset: int, entry_size: int = 14) -> Optional[RT11FileEntry]:
+        """Parse directory entry with enhanced validation"""
+        if offset + entry_size > len(data):
+            return None
+            
+        try:
+            # RT-11 directory entry format (14+ bytes):
+            # 0-1: Status word
+            # 2-7: Filename (3 Radix-50 words)
+            # 8-9: File type (1 Radix-50 word)  
+            # 10-11: Length in blocks
+            # 12-13: Additional data (creation date, job/channel)
+            # 14+: Extra bytes if entry_size > 14
+            
+            entry_data = data[offset:offset + entry_size]
+            words = struct.unpack(f'<{entry_size//2}H', entry_data)
+            
+            status = words[0]
+            
+            # End of segment marker (using improved flag)
+            if status & E_EOS:
+                return None
+                
+            # Decode filename (3 Radix-50 words)
+            filename_result = self._decode_rt11_filename(words[1], words[2], words[3])
+            if not filename_result:
+                return None
+                
+            filename, file_type = filename_result
+            
+            # Length in blocks
+            length = words[5] if len(words) > 5 else 0
+            
+            # Additional data
+            creation_date = None
+            job_channel = 0
+            
+            if len(words) > 6:
+                job_channel = words[6]
+            if len(words) > 7:
+                creation_date = words[7]
+                
+            # Extra data
+            extra_data = entry_data[14:] if entry_size > 14 else b''
+                
+            entry = RT11FileEntry(
+                filename=filename,
+                file_type=file_type,
+                status=status,
+                start_block=0,  # Will be calculated later
+                length=length,
+                creation_date=creation_date,
+                job_channel=job_channel,
+                segment=0,  # Will be set by caller
+                offset=offset,
+                entry_size=entry_size,
+                extra_data=extra_data
+            )
+            
+            # Validation
+            if entry.length > 65535:
+                self._log_warning(f"Suspicious file length {entry.length} for {entry.full_filename}")
+                
+            if len(entry.filename.strip()) == 0 and status != 0:
+                self._log_warning(f"Empty filename with non-zero status {status:04X}")
+                
+            return entry
+            
+        except Exception as e:
+            self._log_error(f"Error parsing directory entry at offset {offset}: {e}")
+            return None
+    
+    def _calculate_file_positions(self) -> None:
+        """Calculate actual file start positions on disk"""
+        # Group files by segment
+        segments = {}
+        for entry in self.directory_entries:
+            if entry.is_valid:
+                if entry.segment not in segments:
+                    segments[entry.segment] = []
+                segments[entry.segment].append(entry)
+        
+        # Calculate positions for each segment
+        for segment_num, entries in segments.items():
+            # Sort by offset within segment
+            entries.sort(key=lambda x: x.offset)
+            
+            # Find segment header to get start block
+            start_block = RT11Constants.FIRST_DIR_BLOCK + 2  # Default
+            if segment_num < len(self.directory_headers):
+                start_block = self.directory_headers[segment_num].start_block
+            
+            current_block = start_block
+            
+            for entry in entries:
+                entry.start_block = current_block
+                current_block += entry.length
+                
+                self._log_info(f"File {entry.full_filename}: blocks {entry.start_block}-{entry.start_block + entry.length - 1}")
+    
+    def load_image(self) -> None:
+        """Load and validate RT-11 disk image"""
+        if not self.image_path.exists():
+            raise FileNotFoundError(f"Image file not found: {self.image_path}")
+            
+        self._log_info(f"Loading RT-11 image: {self.image_path}")
+        
+        try:
+            with open(self.image_path, 'rb') as f:
+                self.image_data = f.read()
+                
+            image_size = len(self.image_data)
+            block_count = image_size // RT11Constants.BLOCK_SIZE
+            
+            self._log_info(f"Image loaded: {image_size} bytes ({block_count} blocks)")
+            
+            # Validate minimum size
+            if image_size < RT11Constants.BLOCK_SIZE * 10:
+                raise RT11ValidationError("Image too small to be valid RT-11 volume")
+                
+            # Detect device type
+            device_type = self._detect_device_type()
+            self._log_info(f"Detected device type: {device_type.value}")
+            
+            # Validate and parse home block
+            try:
+                home_data = self._read_block(RT11Constants.HOME_BLOCK)
+                self.home_block = self._validate_home_block(home_data)
+                if self.home_block.valid:
+                    self._log_info("Home block validation successful")
+                else:
+                    self._log_warning("Home block validation failed, using defaults")
+                    self.home_block = HomeBlock()  # Use defaults
+            except Exception as e:
+                self._log_warning(f"Cannot read home block: {e}")
+                self.home_block = HomeBlock()  # Use defaults
+                
+        except Exception as e:
+            raise RT11Exception(f"Failed to load image: {e}")
+    
+    def parse_directory(self) -> None:
+        """Parse RT-11 directory with multi-segment support"""
+        self._log_info("Parsing RT-11 directory structure...")
+        
+        if not self.home_block:
+            raise RT11Exception("Must load image first")
+            
+        current_block = self.home_block.first_dir_block
+        segment_count = 0
+        max_segments = RT11Constants.MAX_SEGMENTS
+        
+        while segment_count < max_segments:
+            try:
+                self._log_info(f"Reading directory segment {segment_count + 1} at block {current_block}")
+                dir_data = self._read_block(current_block)
+                
+                # Parse directory header (first 10 bytes)
+                header = self._parse_directory_header(dir_data[:10])
+                self.directory_headers.append(header)
+                
+                if not header.valid and self.strict:
+                    break
+                    
+                # Determine entry size
+                entry_size = RT11Constants.DIRECTORY_ENTRY_SIZE + header.extra_bytes
+                
+                # Parse entries in this directory segment
+                offset = 10  # Skip header
+                entries_found = 0
+                
+                while offset <= len(dir_data) - entry_size:
+                    entry = self._parse_directory_entry(dir_data, offset, entry_size)
+                    
+                    if entry is None:  # End of segment
+                        self._log_info(f"End of segment {segment_count + 1} reached")
+                        break
+                        
+                    if entry.is_valid:
+                        entry.segment = segment_count
+                        self.directory_entries.append(entry)
+                        entries_found += 1
+                        self._log_info(f"Found file: {entry.full_filename} ({entry.length} blocks) - {entry.status_description}")
+                    elif entry.is_unused:
+                        self._log_info(f"Unused area: {entry.length} blocks")
+                    
+                    offset += entry_size
+                
+                self._log_info(f"Segment {segment_count + 1}: found {entries_found} entries")
+                
+                # Check for next segment
+                if header.next_segment > 0 and header.next_segment != segment_count + 1:
+                    current_block = self.home_block.first_dir_block + header.next_segment - 1
+                    segment_count = header.next_segment - 1
+                else:
+                    break
+                    
+                segment_count += 1
+                
+            except Exception as e:
+                error_msg = f"Error reading directory segment {segment_count + 1}: {e}"
+                self._log_error(error_msg)
+                if self.strict:
+                    raise RT11Exception(error_msg)
+                break
+        
+        self._calculate_file_positions()
+        self._log_info(f"Directory parsing complete: {len(self.directory_entries)} files found")
+    
+    def validate_filesystem(self) -> bool:
+        """Perform comprehensive filesystem validation"""
+        self._log_info("Performing filesystem validation...")
+        
+        valid = True
+        
+        # Check for reasonable number of files
+        valid_entries = [e for e in self.directory_entries if e.is_valid]
+        if len(valid_entries) == 0:
+            self._log_warning("No valid files found in directory")
+            valid = False
+        elif len(valid_entries) > 1000:
+            self._log_warning(f"Unusually large number of files: {len(valid_entries)}")
+            
+        # Validate file positions don't overlap
+        sorted_files = sorted(valid_entries, key=lambda x: x.start_block)
+        
+        for i in range(len(sorted_files) - 1):
+            current = sorted_files[i]
+            next_file = sorted_files[i + 1]
+            
+            current_end = current.start_block + current.length
+            if current_end > next_file.start_block:
+                self._log_error(f"File overlap detected: {current.full_filename} ends at block {current_end}, {next_file.full_filename} starts at {next_file.start_block}")
+                valid = False
+                
+        # Check for files extending beyond image
+        if sorted_files:
+            last_file = sorted_files[-1]
+            last_block = last_file.start_block + last_file.length
+            max_blocks = len(self.image_data) // RT11Constants.BLOCK_SIZE
+            
+            if last_block > max_blocks:
+                self._log_error(f"File {last_file.full_filename} extends beyond image (block {last_block} > {max_blocks})")
+                valid = False
+                
+        # Report validation results
+        if valid:
+            self._log_info("Filesystem validation passed")
+        else:
+            self._log_warning("Filesystem validation found issues")
+            
+        return valid
+    
+    def extract_file(self, entry: RT11FileEntry, output_dir: Path) -> bool:
+        """Extract a single file with comprehensive error handling"""
+        output_file = output_dir / entry.full_filename
+        
+        # Handle filename conflicts
+        counter = 1
+        base_path = output_file
+        while output_file.exists():
+            stem = base_path.stem
+            suffix = base_path.suffix
+            output_file = base_path.parent / f"{stem}_{counter}{suffix}"
+            counter += 1
+            
+        self._log_info(f"Extracting {entry.full_filename} ({entry.file_category.value}) to {output_file}")
+        
+        try:
+            # Read all blocks for this file
+            file_data = b''
+            blocks_read = 0
+            blocks_failed = 0
+            
+            for block_offset in range(entry.length):
+                block_num = entry.start_block + block_offset
+                try:
+                    block_data = self._read_block(block_num)
+                    file_data += block_data
+                    blocks_read += 1
+                except Exception as e:
+                    self._log_warning(f"Failed to read block {block_num} for {entry.full_filename}: {e}")
+                    # Pad with zeros for unreadable blocks
+                    file_data += b'\x00' * RT11Constants.BLOCK_SIZE
+                    blocks_failed += 1
+            
+            # Write the file
+            with open(output_file, 'wb') as f:
+                f.write(file_data)
+                
+            # Calculate and log statistics
+            file_size = len(file_data)
+            self._log_info(f"Extracted {file_size} bytes ({blocks_read} blocks read, {blocks_failed} blocks failed)")
+            
+            # Create metadata file (enhanced with rt11fs.py style info)
+            metadata_file = output_file.with_suffix(output_file.suffix + '.rt11info')
+            with open(metadata_file, 'w') as f:
+                f.write(f"RT-11 File Information (Enhanced)\n")
+                f.write(f"====================================\n")
+                f.write(f"Original Filename: {entry.full_filename}\n")
+                f.write(f"Canonical Name: {rt11_canonical_filename(entry.full_filename)}\n")
+                f.write(f"File Type: {entry.file_category.value}\n")
+                f.write(f"Status Word: 0x{entry.status:04X}\n")
+                f.write(f"Status Description: {entry.status_description}\n")
+                f.write(f"Start Block: {entry.start_block}\n")
+                f.write(f"Length (blocks): {entry.length}\n")
+                f.write(f"Length (bytes): {file_size}\n")
+                f.write(f"Block Size: {RT11Constants.BLOCK_SIZE}\n")
+                f.write(f"Blocks Read: {blocks_read}\n")
+                f.write(f"Blocks Failed: {blocks_failed}\n")
+                f.write(f"Segment: {entry.segment}\n")
+                f.write(f"Offset in Segment: {entry.offset}\n")
+                
+                # Enhanced status flags
+                status_flags = []
+                if entry.is_permanent: status_flags.append("PERMANENT")
+                if entry.is_tentative: status_flags.append("TENTATIVE")
+                if entry.is_protected: status_flags.append("PROTECTED")
+                if entry.is_unused: status_flags.append("UNUSED")
+                if entry.is_end_marker: status_flags.append("END_MARKER")
+                f.write(f"Status Flags: {', '.join(status_flags) or 'NORMAL'}\n")
+                
+                if entry.creation_date:
+                    date_str = self._decode_rt11_date(entry.creation_date)
+                    if date_str:
+                        f.write(f"Creation Date: {date_str}\n")
+                    f.write(f"Raw Date Word: 0x{entry.creation_date:04X}\n")
+                
+                if entry.job_channel:
+                    f.write(f"Job/Channel: {entry.job_channel}\n")
+                
+                if entry.extra_data:
+                    f.write(f"Extra Data: {len(entry.extra_data)} bytes\n")
+                    f.write(f"Extra Data (hex): {entry.extra_data.hex()}\n")
+                
+                f.write(f"Extraction Time: {datetime.now().isoformat()}\n")
+                f.write(f"Extractor Version: RT-11 Enhanced v2.1 (with rt11fs.py improvements)\n")
+                    
+            return blocks_failed == 0
+            
+        except Exception as e:
+            self._log_error(f"Error extracting {entry.full_filename}: {e}")
+            return False
+    
+    def extract_all(self, output_dir: str = "extracted", include_tentative: bool = False) -> Dict[str, Any]:
+        """Extract all files with comprehensive reporting"""
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
+        
+        self._log_info(f"Extracting files to: {output_path.absolute()}")
+        
+        stats = {
+            'total_files': len(self.directory_entries),
+            'extracted': 0,
+            'skipped': 0,
+            'failed': 0,
+            'permanent': 0,
+            'tentative': 0,
+            'protected': 0,
+            'total_bytes': 0
+        }
+        
+        for entry in self.directory_entries:
+            if not entry.is_valid:
+                continue
+                
+            # Count file types
+            if entry.is_permanent:
+                stats['permanent'] += 1
+            if entry.is_tentative:
+                stats['tentative'] += 1
+            if entry.is_protected:
+                stats['protected'] += 1
+                
+            # Decide whether to extract
+            should_extract = True
+            skip_reason = None
+            
+            if entry.is_tentative and not include_tentative:
+                should_extract = False
+                skip_reason = "tentative file"
+            elif entry.length == 0:
+                should_extract = False
+                skip_reason = "zero length"
+            elif entry.full_filename.upper().endswith('.BAD'):
+                should_extract = False
+                skip_reason = "bad block file"
+                
+            if should_extract:
+                try:
+                    success = self.extract_file(entry, output_path)
+                    if success:
+                        stats['extracted'] += 1
+                        stats['total_bytes'] += entry.size_bytes
+                    else:
+                        stats['failed'] += 1
+                except Exception as e:
+                    self._log_error(f"Failed to extract {entry.full_filename}: {e}")
+                    stats['failed'] += 1
+            else:
+                self._log_info(f"Skipping {entry.full_filename}: {skip_reason}")
+                stats['skipped'] += 1
+        
+        # Create extraction report
+        self._create_extraction_report(output_path, stats)
+        self._log_info(f"Extraction complete. Report saved to: {output_path / 'extraction_report.txt'}")
+        return stats
+    
+    def _create_extraction_report(self, output_path: Path, stats: Dict[str, Any]) -> None:
+        """Create detailed extraction report"""
+        report_file = output_path / 'extraction_report.txt'
+        with open(report_file, 'w') as f:
+            f.write(f"RT-11 Enhanced Extraction Report\n")
+            f.write(f"Enhanced with rt11fs.py improvements\n")
+            f.write(f"====================================\n\n")
+            f.write(f"Source Image: {self.image_path}\n")
+            f.write(f"Extraction Time: {datetime.now().isoformat()}\n")
+            f.write(f"Device Type: {self._detect_device_type().value}\n\n")
+            
+            if self.home_block and self.home_block.valid:
+                f.write(f"Volume Information:\n")
+                f.write(f"  Volume ID: {self.home_block.volume_id}\n")
+                f.write(f"  Total Blocks: {self.home_block.total_blocks}\n")
+                f.write(f"  First Directory Block: {self.home_block.first_dir_block}\n\n")
+            
+            f.write(f"Statistics:\n")
+            f.write(f"  Total Files Found: {stats['total_files']}\n")
+            f.write(f"  Successfully Extracted: {stats['extracted']}\n")
+            f.write(f"  Failed Extractions: {stats['failed']}\n")
+            f.write(f"  Skipped Files: {stats['skipped']}\n")
+            f.write(f"  Permanent Files: {stats['permanent']}\n")
+            f.write(f"  Tentative Files: {stats['tentative']}\n")
+            f.write(f"  Protected Files: {stats['protected']}\n")
+            f.write(f"  Total Bytes Extracted: {stats['total_bytes']:,}\n\n")
+            
+            if self.errors:
+                f.write(f"Errors ({len(self.errors)})::\n")
+                for error in self.errors:
+                    f.write(f"  {error}\n")
+                f.write("\n")
+                
+            if self.warnings:
+                f.write(f"Warnings ({len(self.warnings)})::\n")
+                for warning in self.warnings:
+                    f.write(f"  {warning}\n")
+                f.write("\n")
+                
+            if self.bad_blocks:
+                f.write(f"Bad Blocks Detected ({len(self.bad_blocks)})::\n")
+                for block in sorted(self.bad_blocks):
+                    f.write(f"  Block {block}\n")
+    
+    def list_files(self, detailed: bool = False) -> None:
+        """List all files with enhanced information display"""
+        print(f"\nRT-11 Enhanced Filesystem Analysis (with rt11fs.py improvements): {self.image_path}")
+        print("=" * 80)
+        
+        if self.home_block and self.home_block.valid:
+            print(f"Volume Information:")
+            print(f"  Device Type: {self._detect_device_type().value}")
+            if self.home_block.volume_id:
+                print(f"  Volume ID: {self.home_block.volume_id}")
+            print(f"  Total Blocks: {self.home_block.total_blocks}")
+            print(f"  First Directory Block: {self.home_block.first_dir_block}")
+            print()
+            
+        valid_entries = [e for e in self.directory_entries if e.is_valid]
+        print(f"Directory Listing ({len(valid_entries)} entries):")
+        print("-" * 80)
+        
+        if detailed:
+            print(f"{'Filename':<20} {'Type':<8} {'Size':<8} {'Status':<15} {'Start':<8} {'Category':<15}")
+        else:
+            print(f"{'Filename':<20} {'Type':<8} {'Size (KB)':<10} {'Status':<15} {'Category':<15}")
+        print("-" * 80)
+        
+        total_size = 0
+        by_category = {}
+        by_status = {'permanent': 0, 'tentative': 0, 'protected': 0}
+        
+        for entry in valid_entries:
+            size_kb = entry.size_bytes // 1024
+            total_size += entry.size_bytes
+            
+            # Statistics
+            category = entry.file_category.name
+            by_category[category] = by_category.get(category, 0) + 1
+            
+            if entry.is_permanent:
+                by_status['permanent'] += 1
+            if entry.is_tentative:
+                by_status['tentative'] += 1
+            if entry.is_protected:
+                by_status['protected'] += 1
+                
+            if detailed:
+                print(f"{entry.full_filename:<20} {entry.file_type:<8} {entry.length:<8} {entry.status_description:<15} {entry.start_block:<8} {entry.file_category.value:<15}")
+            else:
+                print(f"{entry.full_filename:<20} {entry.file_type:<8} {size_kb:<10} {entry.status_description:<15} {entry.file_category.value:<15}")
+        
+        print("-" * 80)
+        print(f"Summary:")
+        print(f"  Total Files: {len(valid_entries)}")
+        print(f"  Total Size: {total_size:,} bytes ({total_size // 1024:,} KB)")
+        print(f"  Permanent: {by_status['permanent']}, Tentative: {by_status['tentative']}, Protected: {by_status['protected']}")
+        
+        if by_category:
+            print(f"\nBy File Type:")
+            for cat, count in sorted(by_category.items()):
+                print(f"  {cat}: {count}")
+                
+        if self.bad_blocks:
+            print(f"\nBad Blocks Detected: {len(self.bad_blocks)}")
+            
+        if self.errors:
+            print(f"\nErrors: {len(self.errors)}")
+            
+        if self.warnings:
+            print(f"Warnings: {len(self.warnings)}")
+
+def read_rt11_segment_proper(image_file, segment_offset, segment_size, verbose=True):
+    """Read RT-11 directory segment following PUTR specification exactly"""
+    files = []
+    
+    try:
+        with open(image_file, 'rb') as f:
+            f.seek(segment_offset)
+            data = f.read(segment_size)
+            
+            if len(data) < segment_size:
+                return files, None
+            
+            # Parse 5-word header (10 bytes)
+            header = struct.unpack('<5H', data[:10])
+            total_segments = header[0]
+            next_segment = header[1] 
+            highest_segment = header[2]
+            extra_bytes = header[3]
+            start_block = header[4]
+            
+            segment_num = segment_offset // segment_size
+            if verbose:
+                print(f"  Segment {segment_num}: total_segs={total_segments}, next={next_segment}, "
+                      f"highest={highest_segment}, extra={extra_bytes}, start_blk={start_block}")
+            
+            # Validate header
+            if total_segments < 1 or total_segments > 31:
+                if verbose:
+                    print(f"    Invalid total_segments: {total_segments}")
+                return files, None
+            
+            if next_segment > 31:
+                if verbose:
+                    print(f"    Invalid next_segment: {next_segment}")
+                return files, None
+            
+            # Calculate entry size: 14 bytes base + extra_bytes (must be even)
+            entry_size = 14 + extra_bytes
+            if entry_size % 2 != 0:
+                if verbose:
+                    print(f"    Invalid entry size: {entry_size} (not even)")
+                return files, None
+            
+            if verbose:
+                print(f"    Entry size: {entry_size} bytes")
+            
+            # Process entries starting after header
+            offset = 10
+            entry_count = 0
+            
+            while offset <= segment_size - entry_size:
+                # Read entry
+                entry_data = data[offset:offset + entry_size]
+                if len(entry_data) < entry_size:
+                    break
+                
+                # Parse standard 14-byte entry
+                try:
+                    entry = struct.unpack('<7H', entry_data[:14])
+                    status = entry[0]
+                    word1, word2, word3 = entry[1:4]  # RAD50 filename
+                    length_blocks = entry[4]
+                    job_channel = entry[5]
+                    creation_date = entry[6]
+                    
+                    # Interpret status
+                    file_type, is_valid_entry = interpret_status_bits(status)
+                    
+                    # Check for end of segment
+                    if file_type == "end_of_segment":
+                        if verbose:
+                            print(f"    End of segment marker at offset {offset}")
+                        break
+                    
+                    # Process file entries (permanent and tentative)
+                    if is_valid_entry and file_type in ["permanent", "permanent_protected", "tentative"]:
+                        filename = decode_rt11_filename(word1, word2, word3)
+                        
+                        if filename and filename.strip():
+                            # Additional validation
+                            if length_blocks > 0 and length_blocks <= 10000:  # Reasonable size
+                                date_str = decode_rt11_date(creation_date)
+                                
+                                file_entry = {
+                                    'filename': filename.strip(),
+                                    'size_blocks': length_blocks,
+                                    'size_bytes': length_blocks * 512,
+                                    'status': status,
+                                    'file_type': file_type,
+                                    'creation_date_raw': creation_date,
+                                    'creation_date': date_str,
+                                    'job_channel': job_channel,
+                                    'segment': segment_num,
+                                    'offset': offset,
+                                    'entry_size': entry_size,
+                                    'start_block': start_block
+                                }
+                                
+                                files.append(file_entry)
+                                if verbose:
+                                    print(f"    File: {filename:<15} ({length_blocks:4d} blks, {file_type})")
+                                entry_count += 1
+                    
+                    # Move to next entry
+                    offset += entry_size
+                    
+                except struct.error as e:
+                    if verbose:
+                        print(f"    Struct error at offset {offset}: {e}")
+                    break
+                    
+            if verbose:
+                print(f"    Processed {entry_count} file entries")
+            
+            # Return next segment number (0 if no more)
+            next_seg_num = next_segment if next_segment > 0 else None
+            return files, next_seg_num
+            
+    except Exception as e:
+        if verbose:
+            print(f"  Error reading segment {segment_offset//segment_size}: {e}")
+        return files, None
+
+def find_rt11_directory(image_file):
+    """Search for RT-11 directory by scanning for valid headers"""
+    file_size = os.path.getsize(image_file)
+    
+    with open(image_file, 'rb') as f:
+        # Search every 128 bytes for directory headers
+        for offset in range(0, min(file_size, 50000), 128):  # Don't search entire large disks
+            f.seek(offset)
+            data = f.read(10)
+            
+            if len(data) >= 10:
+                try:
+                    header = struct.unpack('<5H', data)
+                    total_segs, next_seg, highest_seg, extra_bytes, start_blk = header
+                    
+                    # Check if this looks like a valid RT-11 directory header
+                    if (1 <= total_segs <= 31 and 
+                        next_seg <= 31 and 
+                        highest_seg <= 31 and
+                        extra_bytes <= 100 and
+                        start_blk < 10000):
+                        
+                        # Determine likely sector size based on file size
+                        if file_size == 256256:  # RX01 size
+                            sector_size = 128
+                            desc = "RX01 format (128 bytes/sector)"
+                        elif file_size % 512 == 0:
+                            sector_size = 512
+                            desc = "Standard RT-11 (512 bytes/sector)"
+                        else:
+                            sector_size = 256
+                            desc = "RT-11 alternative (256 bytes/sector)"
+                        
+                        return offset, sector_size, desc, header
+                        
+                except:
+                    continue
+    
+    # No directory found, default values
+    return 6 * 512, 512, "Default (512 bytes/sector, assumed)", None
+
+def scan_rt11_directory_complete(image_file, verbose=True):
+    """Scan complete RT-11 directory following segment chain"""
+    all_files = []
+    
+    if verbose:
+        print(f"Scanning RT-11 directory in: {image_file}")
+        print("=" * 60)
+    
+    # Find the RT-11 directory
+    directory_offset, sector_size, format_desc, header = find_rt11_directory(image_file)
+    if verbose:
+        print(f"Detected format: {format_desc}")
+        print(f"Directory found at offset: {directory_offset}")
+    
+    # Determine segment size based on sector size
+    if sector_size == 128:
+        # RX01/RX02: RT-11 segments are 1024 bytes = 8 sectors of 128 bytes
+        segment_size = 1024
+    elif sector_size == 256:
+        # Some systems: RT-11 segments are 1024 bytes = 4 sectors of 256 bytes
+        segment_size = 1024
+    else:
+        # Standard: RT-11 segments are 1024 bytes = 2 sectors of 512 bytes
+        segment_size = 1024
+    
+    current_segment = 1
+    visited_segments = set()
+    
+    while current_segment and current_segment not in visited_segments:
+        if verbose:
+            print(f"\nReading directory segment {current_segment}:")
+        
+        visited_segments.add(current_segment)
+        
+        # Calculate segment offset
+        segment_offset = directory_offset + ((current_segment - 1) * segment_size)
+        
+        files, next_segment = read_rt11_segment_proper(image_file, segment_offset, segment_size, verbose)
+        
+        if files:
+            if verbose:
+                print(f"  Found {len(files)} files in segment {current_segment}")
+            all_files.extend(files)
+        else:
+            if verbose:
+                print(f"  No files found in segment {current_segment}")
+        
+        # Move to next segment
+        current_segment = next_segment
+        
+        # Safety check
+        if len(visited_segments) > 31:  # RT-11 max segments
+            if verbose:
+                print("  Warning: Too many segments, stopping")
+            break
+    
+    if verbose:
+        print(f"\nTotal segments processed: {len(visited_segments)}")
+        print(f"Total files found: {len(all_files)}")
+    
+    return all_files
+
+def calculate_file_start_block(file_info, all_files):
+    """Calculate the actual starting block of a file within the RT-11 filesystem"""
+    # Find all files in the same segment that come before this file
+    same_segment_files = [f for f in all_files if f['segment'] == file_info['segment'] and f['offset'] < file_info['offset']]
+    
+    # Sort by offset to get proper order
+    same_segment_files.sort(key=lambda x: x['offset'])
+    
+    # Calculate cumulative block offset from start of file area
+    block_offset = 0
+    for f in same_segment_files:
+        block_offset += f['size_blocks']
+    
+    # Add to the start block of the file area for this segment
+    return file_info['start_block'] + block_offset
+
+def extract_file(image_file, file_info, output_dir, all_files, verbose=True):
+    """Extract a single file from RT-11 image"""
+    try:
+        # Calculate actual file position
+        file_start_block = calculate_file_start_block(file_info, all_files)
+        
+        # Read file data
+        with open(image_file, 'rb') as f:
+            f.seek(file_start_block * 512)
+            file_data = f.read(file_info['size_blocks'] * 512)
+            
+            if len(file_data) < file_info['size_blocks'] * 512:
+                if verbose:
+                    print(f"    Warning: Could only read {len(file_data)} bytes of {file_info['size_blocks'] * 512}")
+        
+        # Create output file
+        output_path = output_dir / file_info['filename']
+        
+        with open(output_path, 'wb') as f:
+            f.write(file_data)
+        
+        if verbose:
+            print(f"    Extracted: {file_info['filename']} ({len(file_data)} bytes)")
+        
+        return True
+        
+    except Exception as e:
+        if verbose:
+            print(f"    Error extracting {file_info['filename']}: {e}")
+        return False
+
+def decode_rad50(word):
+    """Decode a 16-bit RAD50 word to 3 characters"""
+    if word == 0:
+        return '   '
+    
+    if word > 63999:  # 40^3 - 1
+        return None
+    
+    c1 = (word // 1600) % 40
+    c2 = (word // 40) % 40
+    c3 = word % 40
+    
+    if c1 >= 40 or c2 >= 40 or c3 >= 40:
+        return None
+    
+    return RAD50_CHARS[c1] + RAD50_CHARS[c2] + RAD50_CHARS[c3]
+
+def decode_rt11_filename(word1, word2, word3):
+    """Decode RT-11 filename from 3 RAD50 words"""
+    try:
+        part1 = decode_rad50(word1)
+        part2 = decode_rad50(word2)  
+        part3 = decode_rad50(word3)
+        
+        if part1 is None or part2 is None or part3 is None:
+            return None
+        
+        filename = part1.rstrip() + part2.rstrip()
+        
+        if part3.strip():
+            filename += '.' + part3.rstrip()
+        
+        return filename
+    except:
+        return None
+
+def rt11_to_date(val: int) -> Optional[date]:
+    """
+    Translate RT-11 date to Python date (improved from rt11fs.py)
+    """
+    if val == 0:
+        return None
+    year = val & int("0000000000011111", 2)
+    day = (val & int("0000001111100000", 2)) >> 5
+    month = (val & int("0011110000000000", 2)) >> 10
+    age = (val & int("1100000000000000", 2)) >> 14
+    year = year + 1972 + age * 32
+    if day == 0:
+        day = 1
+    if month == 0:
+        month = 1
+    try:
+        return date(year, month, day)
+    except:
+        return None
+
+def rt11_canonical_filename(fullname: Optional[str], wildcard: bool = False) -> str:
+    """
+    Generate the canonical RT11 name (from rt11fs.py)
+    """
+    fullname = (fullname or "").upper()
+    try:
+        filename, extension = fullname.split(".", 1)
+    except Exception:
+        filename = fullname
+        extension = "*" if wildcard else ""
+    # Simplified RAD50 canonicalization
+    filename = filename[:6].ljust(6)
+    extension = extension[:3].ljust(3)
+    return f"{filename.strip()}.{extension.strip()}"
+
+def decode_rt11_date(date_word):
+    """Decode RT-11 date format using rt11_to_date function"""
+    if date_word == 0:
+        return None
+    
+    # Use the working rt11_to_date function
+    date_obj = rt11_to_date(date_word)
+    if date_obj:
+        return date_obj.strftime("%Y-%m-%d")
+    
+    return None
+
+def interpret_status_bits(status):
+    """Interpret RT-11 status bits according to PUTR documentation"""
+    file_type = "unknown"
+    is_valid = False
+    
+    # Status bit meanings (from PUTR code) - Convert octal to hex:
+    # 0400 (octal) = 0x100 = tentative file (not .CLOSEd yet)
+    # 1000 (octal) = 0x200 = <UNUSED> area  
+    # 2000 (octal) = 0x400 = permanent file
+    # 102000 (octal) = 0x8400 = protected permanent file
+    # 4000 (octal) = 0x800 = end of segment
+    
+    if status & 0x800:  # 4000 octal = end of segment
+        file_type = "end_of_segment"
+        is_valid = False
+    elif status & 0x400:  # 2000 octal = permanent file
+        if status & 0x8000:  # 100000 octal protection bit
+            file_type = "permanent_protected"
+        else:
+            file_type = "permanent"
+        is_valid = True
+    elif status & 0x200:  # 1000 octal = unused area
+        file_type = "unused"
+        is_valid = False
+    elif status & 0x100:  # 0400 octal = tentative file
+        file_type = "tentative"
+        is_valid = True
+    
+    return file_type, is_valid
+
+def apply_rt11_file_date(output_dir, file_info, verbose=False):
+    """Apply original RT-11 creation date to extracted file"""
+    try:
+        import os
+        from datetime import datetime
+        
+        filename = file_info['filename']
+        creation_date = file_info.get('creation_date')
+        
+        if not creation_date or creation_date == 'N/A':
+            return
+        
+        file_path = output_dir / filename
+        if not file_path.exists():
+            return
+        
+        try:
+            # Parse date string (format: YYYY-MM-DD)
+            date_obj = datetime.strptime(creation_date, '%Y-%m-%d')
+            # Convert to timestamp
+            timestamp = date_obj.timestamp()
+            
+            # Set both access and modification times
+            os.utime(file_path, (timestamp, timestamp))
+            
+            if verbose:
+                print(f"    Applied date {creation_date} to {filename}")
+                
+        except ValueError:
+            # Skip invalid dates
+            if verbose:
+                print(f"    Warning: Invalid date format '{creation_date}' for {filename}")
+        except Exception as e:
+            if verbose:
+                print(f"    Warning: Could not set date for {filename}: {e}")
+        
+    except Exception as e:
+        if verbose:
+            print(f"    Error applying RT-11 date: {e}")
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Universal PDP-11 Disk Image Extractor v3.0 - RT-11 & Unix Support",
+        epilog="""Examples:
+  %(prog)s disk.dsk                    # Auto-detect and extract
+  %(prog)s disk.dsk -l                 # List files only
+  %(prog)s disk.dsk -l -d              # Detailed file listing
+  %(prog)s disk.dsk -t                 # Include tentative files (RT-11)
+  %(prog)s disk.dsk --detect-only      # Only detect filesystem type
+  %(prog)s disk.dsk --force-rt11       # Force RT-11 mode
+  %(prog)s disk.dsk --force-unix       # Force Unix mode
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    parser.add_argument("image", help="Disk image file (.dsk, .img, etc.)")
+    parser.add_argument("-o", "--output", default="extracted", 
+                       help="Output directory for extracted files (default: extracted)")
+    parser.add_argument("-l", "--list", action="store_true", 
+                       help="List files only, don't extract")
+    parser.add_argument("-d", "--detailed", action="store_true",
+                       help="Show detailed file information")
+    parser.add_argument("-p", "--path", default="/",
+                       help="Path to list or extract (Unix only, default: /)")
+    parser.add_argument("-t", "--tentative", action="store_true",
+                       help="Include tentative files (RT-11) or all files (Unix)")
+    parser.add_argument("-v", "--verbose", action="store_true", 
+                       help="Verbose output with detailed logging")
+    parser.add_argument("--detect-only", action="store_true",
+                       help="Only detect filesystem type")
+    parser.add_argument("--force-rt11", action="store_true",
+                       help="Force RT-11 filesystem processing")
+    parser.add_argument("--force-unix", action="store_true",
+                       help="Force Unix filesystem processing")
+    parser.add_argument("--no-strict", action="store_true",
+                       help="Continue extraction despite errors (RT-11 only)")
+    parser.add_argument("--validate", action="store_true",
+                       help="Perform comprehensive filesystem validation (RT-11 only)")
+    parser.add_argument("--enhanced", action="store_true",
+                       help="Use enhanced extraction method (RT-11 only)")
+    
+    args = parser.parse_args()
+    
+    try:
+        # Determine filesystem type
+        if args.force_rt11:
+            fs_type = "rt11"
+            description = "RT-11 (forced)"
+        elif args.force_unix:
+            fs_type = "unix"
+            description = "Unix (forced)"
+        else:
+            # Auto-detect filesystem type
+            fs_type, description = detect_filesystem_type(args.image)
+        
+        # Show detection only if requested
+        if args.detect_only:
+            if fs_type != "unknown":
+                print(f"✅ {description}")
+                return 0
+            else:
+                print(f"❌ {description}")
+                return 1
+        
+        # Handle Unix filesystems
+        if fs_type == "unix":
+            print(f"Universal PDP-11 Extractor v3.0 - Unix Mode")
+            print(f"Processing: {args.image}")
+            print(f"Detected: {description}")
+            print("-" * 50)
+            
+            # Load Unix filesystem
+            fs = UnixV6FileSystem(args.image, args.verbose)
+            
+            if args.list:
+                # List Unix files
+                fs.list_files(args.path, args.detailed)
+            else:
+                # Extract Unix files
+                output_path = Path(args.output)
+                output_path.mkdir(exist_ok=True)
+                
+                target_inode = fs.find_path(args.path)
+                if not target_inode:
+                    print(f"❌ Path not found: {args.path}")
+                    return 1
+                
+                print(f"🚀 Extracting Unix files from {args.path} to {output_path}")
+                
+                if target_inode.is_dir():
+                    extracted = fs.extract_directory(target_inode, output_path)
+                    print(f"✅ Extracted {extracted} files successfully")
+                else:
+                    # Extract individual file
+                    filename = Path(args.path).name
+                    if fs.extract_file(target_inode, output_path, filename):
+                        print(f"✅ Extracted 1 file successfully")
+                    else:
+                        print(f"❌ Failed to extract file")
+                        return 1
+            
+            return 0
+        
+        # Handle RT-11 filesystems
+        elif fs_type == "rt11":
+            print(f"Universal PDP-11 Extractor v3.0 - RT-11 Mode")
+            print(f"Processing: {args.image}")
+            print(f"Detected: {description}")
+            print("-" * 50)
+        
+        # Use enhanced method if explicitly requested, otherwise use legacy
+        if args.enhanced and fs_type == "rt11":
+            print(f"RT-11 Enhanced Extractor v2.1 (with rt11fs.py improvements)")
+            print(f"Processing: {args.image}")
+            print("-" * 50)
+            
+            # Check input file
+            if not os.path.exists(args.image):
+                print(f"Error: Image file '{args.image}' not found")
+                return 1
+            
+            # Create output directory
+            output_dir = Path(args.output)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Set verbosity
+            verbose = args.verbose
+            
+            if verbose:
+                print("RT-11 File Extractor - Based on PUTR.asm documentation")
+                print("=" * 60)
+            
+            # Scan directory
+            files = scan_rt11_directory_complete(args.image, verbose)
+            
+            if not files:
+                print("No files found in RT-11 directory")
+                return 1
+            
+            if args.list:
+                # List files
+                print(f"\nRT-11 Directory Listing: {args.image}")
+                print("=" * 80)
+                print(f"{'Filename':<20} {'Type':<8} {'Size (KB)':<10} {'Status':<15} {'Date':<12}")
+                print("-" * 80)
+                
+                for file_info in sorted(files, key=lambda x: x['filename']):
+                    size_kb = file_info['size_bytes'] // 1024
+                    date_str = file_info['creation_date'] or "N/A"
+                    print(f"{file_info['filename']:<20} {file_info['file_type']:<8} {size_kb:<10} {file_info['file_type']:<15} {date_str:<12}")
+                
+                print(f"\nTotal files: {len(files)}")
+                return 0
+            
+            # Remove duplicates by filename (keep first occurrence)
+            unique_files = {}
+            for file_info in files:
+                filename = file_info['filename'].upper()
+                if filename not in unique_files:
+                    unique_files[filename] = file_info
+            
+            final_files = list(unique_files.values())
+            
+            print(f"\nExtracting {len(final_files)} files to: {output_dir}")
+            print("=" * 60)
+            
+            # Extract files
+            extracted_count = 0
+            failed_count = 0
+            
+            for file_info in sorted(final_files, key=lambda x: (x['segment'], x['offset'])):
+                if verbose:
+                    print(f"Extracting: {file_info['filename']}")
+                
+                success = extract_file(args.image, file_info, output_dir, final_files, verbose)
+                
+                if success:
+                    extracted_count += 1
+                else:
+                    failed_count += 1
+            
+            # Summary
+            print(f"\n[OK] Extraction complete!")
+            print(f"[+] Successfully extracted: {extracted_count} files")
+            if failed_count > 0:
+                print(f"[-] Failed to extract: {failed_count} files")
+            print(f"[OUT] Output directory: {output_dir.absolute()}")
+            
+            return 0 if failed_count == 0 else 1
+        
+        # Use legacy method (default)
+        print(f"RT-11 Extractor v2.0 - Legacy Mode")
+        print(f"Processing: {args.image}")
+        print("-" * 50)
+        
+        # Check input file
+        if not os.path.exists(args.image):
+            print(f"[ERROR] Image file not found: {args.image}")
+            return 1
+        
+        # Create output directory
+        output_dir = Path(args.output)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Set verbosity
+        verbose = args.verbose
+        
+        if verbose:
+            print("RT-11 File Extractor - Based on PUTR.asm documentation")
+            print("=" * 60)
+        
+        # Scan directory
+        files = scan_rt11_directory_complete(args.image, verbose)
+        
+        if not files:
+            print("No files found in RT-11 directory")
+            return 1
+        
+        if args.list:
+            # List files
+            print(f"\nRT-11 Directory Listing: {args.image}")
+            print("=" * 80)
+            print(f"{'Filename':<20} {'Type':<8} {'Size (KB)':<10} {'Status':<15} {'Date':<12}")
+            print("-" * 80)
+            
+            for file_info in sorted(files, key=lambda x: x['filename']):
+                size_kb = file_info['size_bytes'] // 1024
+                date_str = file_info['creation_date'] or "N/A"
+                print(f"{file_info['filename']:<20} {file_info['file_type']:<8} {size_kb:<10} {file_info['file_type']:<15} {date_str:<12}")
+            
+            print(f"\nTotal files: {len(files)}")
+            return 0
+        
+        # Remove duplicates by filename (keep first occurrence)
+        unique_files = {}
+        for file_info in files:
+            filename = file_info['filename'].upper()
+            if filename not in unique_files:
+                unique_files[filename] = file_info
+        
+        final_files = list(unique_files.values())
+        
+        print(f"\nExtracting {len(final_files)} files to: {output_dir}")
+        print("=" * 60)
+        
+        # Extract files
+        extracted_count = 0
+        failed_count = 0
+        
+        for file_info in sorted(final_files, key=lambda x: (x['segment'], x['offset'])):
+            if verbose:
+                print(f"Extracting: {file_info['filename']}")
+            
+            success = extract_file(args.image, file_info, output_dir, final_files, verbose)
+            
+            if success:
+                extracted_count += 1
+                # Apply original RT-11 date to extracted file
+                apply_rt11_file_date(output_dir, file_info, verbose)
+            else:
+                failed_count += 1
+        
+        # Summary
+        print(f"\n[OK] Extraction complete!")
+        print(f"[+] Successfully extracted: {extracted_count} files")
+        if failed_count > 0:
+            print(f"[-] Failed to extract: {failed_count} files")
+        print(f"[OUT] Output directory: {output_dir.absolute()}")
+        
+        return 0 if failed_count == 0 else 1
+                
+    except KeyboardInterrupt:
+        print("\n[CANCELLED] Operation cancelled by user")
+        return 130
+    except Exception as e:
+        print(f"\n[ERROR] {e}")
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
+        return 1
+    
+    return 0
+
+# Unix filesystem support classes
+class UnixSuperblock:
+    """Unix V6 Superblock according to official documentation"""
+    
+    def __init__(self, data: bytes):
+        self.parse(data)
+    
+    def parse(self, data: bytes):
+        """Parse according to Unix V6 /usr/man/man5/fs.5"""
+        if len(data) < 415:  # SUPERBLOCK_SIZE
+            raise ValueError("Superblock data too small")
+            
+        # Unix V6 superblock structure
+        self.isize, self.fsize, self.nfree = struct.unpack('<HHH', data[:6])
+        
+        # Free block array (100 entries)
+        self.free = list(struct.unpack('<100H', data[6:206]))
+        
+        # Inode information
+        self.ninode = struct.unpack('<H', data[206:208])[0]
+        self.inode = list(struct.unpack('<100H', data[208:408]))
+        
+        # Flags and time
+        self.flock, self.ilock, self.fmod = struct.unpack('<BBB', data[408:411])
+        self.time = struct.unpack('<I', data[411:415])[0]
+    
+    def __repr__(self):
+        return f'UnixSuperblock(isize={self.isize}, fsize={self.fsize}, nfree={self.nfree}, ninode={self.ninode})'
+
+class UnixINode:
+    """Unix V6 INode according to official documentation"""
+    
+    def __init__(self, data: bytes, inode_num: int = 0):
+        self.inode = inode_num
+        self.parse(data)
+    
+    def parse(self, data: bytes):
+        """Parse according to Unix V6 /usr/man/man5/fs.5 - flexible for different versions"""
+        if len(data) < 16:  # Minimum for basic fields
+            raise ValueError("INode data too small")
+            
+        # Parse basic fields (always present)
+        self.flag = struct.unpack('<H', data[0:2])[0]
+        self.nlinks = struct.unpack('<B', data[2:3])[0] if len(data) > 2 else 0
+        self.uid = struct.unpack('<B', data[3:4])[0] if len(data) > 3 else 0
+        self.gid = struct.unpack('<B', data[4:5])[0] if len(data) > 4 else 0
+        
+        # File size (can be in different formats)
+        if len(data) >= 8:
+            size_bytes = data[5:8] if len(data) >= 8 else data[5:]
+            if len(size_bytes) >= 3:
+                self.size = (size_bytes[0] << 16) + struct.unpack('<H', size_bytes[1:3])[0]
+            elif len(size_bytes) >= 2:
+                self.size = struct.unpack('<H', size_bytes[:2])[0]
+            else:
+                self.size = size_bytes[0] if size_bytes else 0
+        else:
+            self.size = 0
+        
+        # Block addresses (8 words, may vary)
+        self.addr = [0] * 8
+        addr_offset = 8
+        for i in range(8):
+            if addr_offset + 2 <= len(data):
+                self.addr[i] = struct.unpack('<H', data[addr_offset:addr_offset+2])[0]
+                addr_offset += 2
+            else:
+                break
+        
+        # Times (if available)
+        time_offset = addr_offset
+        if time_offset + 4 <= len(data):
+            self.actime = struct.unpack('<I', data[time_offset:time_offset+4])[0]
+        else:
+            self.actime = 0
+            
+        if time_offset + 8 <= len(data):
+            self.modtime = struct.unpack('<I', data[time_offset+4:time_offset+8])[0]
+        else:
+            self.modtime = 0
+    
+    def is_allocated(self) -> bool:
+        """Check if inode is allocated"""
+        return bool(self.flag & 0x8000)
+    
+    def is_dir(self) -> bool:
+        """Check if this is a directory"""
+        return bool((self.flag & 0x4000) == 0x4000)
+    
+    def is_regular_file(self) -> bool:
+        """Check if this is a regular file"""
+        return bool((self.flag & 0x4000) == 0x0000)
+    
+    def is_large(self) -> bool:
+        """Check if this is a large file (uses indirect blocks)"""
+        return bool(self.flag & 0x1000)
+    
+    def get_type(self) -> int:
+        """Get file type"""
+        return (self.flag & 0x6000) >> 13
+    
+    def flags_string(self) -> str:
+        """Human-readable flag representation"""
+        s = ''
+        s += 'a' if self.flag & 0x8000 else '.'  # allocated
+        fmt = (self.flag & 0x6000) >> 13
+        s += {0: 'F', 1: 'S', 2: 'D', 3: 'B'}[fmt]  # File/Special/Dir/Block
+        s += 'L' if self.flag & 0x1000 else '.'  # Large file
+        s += 'U' if self.flag & 0x0800 else '.'  # Set UID
+        s += 'G' if self.flag & 0x0400 else '.'  # Set GID
+        
+        # Permission bits
+        s += 'r' if self.flag & 0x0100 else '-'  # Owner read
+        s += 'w' if self.flag & 0x0080 else '-'  # Owner write  
+        s += 'x' if self.flag & 0x0040 else '-'  # Owner execute
+        s += 'r' if self.flag & 0x0020 else '-'  # Group read
+        s += 'w' if self.flag & 0x0010 else '-'  # Group write
+        s += 'x' if self.flag & 0x0008 else '-'  # Group execute
+        s += 'r' if self.flag & 0x0004 else '-'  # Other read
+        s += 'w' if self.flag & 0x0002 else '-'  # Other write
+        s += 'x' if self.flag & 0x0001 else '-'  # Other execute
+        
+        return s
+    
+    def get_unix_time(self) -> Optional[datetime]:
+        """Convert Unix time to datetime"""
+        try:
+            if self.modtime > 0:
+                return datetime.fromtimestamp(self.modtime)
+        except (ValueError, OSError):
+            pass
+        return None
+    
+    def __repr__(self):
+        return f'UnixINode(uid={self.uid}, gid={self.gid}, size={self.size}, flags={self.flags_string()})'
+
+class UnixV6FileSystem:
+    """Unix V6 filesystem for PDP-11"""
+    
+    def __init__(self, image_path: str, verbose: bool = False):
+        self.image_path = Path(image_path)
+        self.verbose = verbose
+        self.image_data = None
+        self.superblock = None
+        
+        self._load_image()
+        self._load_superblock()
+    
+    def _load_image(self):
+        """Load disk image"""
+        if not self.image_path.exists():
+            raise FileNotFoundError(f"Image not found: {self.image_path}")
+            
+        with open(self.image_path, 'rb') as f:
+            self.image_data = f.read()
+            
+        if self.verbose:
+            print(f"Loaded Unix image: {len(self.image_data)} bytes")
+    
+    def _load_superblock(self):
+        """Load and validate superblock"""
+        # Superblock is in block 1 (offset 512)
+        sb_data = self.read_block(1)
+        
+        try:
+            self.superblock = UnixSuperblock(sb_data[:415])  # SUPERBLOCK_SIZE
+            if self.verbose:
+                print(f"Superblock: {self.superblock}")
+        except Exception as e:
+            raise ValueError(f"Invalid Unix superblock: {e}")
+    
+    def read_block(self, block_num: int) -> bytes:
+        """Read a block from disk"""
+        offset = block_num * 512  # BLOCK_SIZE
+        if offset + 512 > len(self.image_data):
+            raise ValueError(f"Block {block_num} beyond image size")
+        return self.image_data[offset:offset + 512]
+    
+    def read_inode(self, inode_num: int) -> UnixINode:
+        """Read a specific inode"""
+        if inode_num < 1:
+            raise ValueError("Invalid inode number")
+            
+        # Inodes start at block 2
+        offset = 512 * 2 + (inode_num - 1) * 32  # INODE_SIZE
+        if offset + 32 > len(self.image_data):
+            raise ValueError(f"INode {inode_num} beyond image size")
+            
+        inode_data = self.image_data[offset:offset + 32]
+        return UnixINode(inode_data, inode_num)
+    
+    def get_file_blocks(self, inode: UnixINode) -> List[int]:
+        """Get list of blocks containing the file"""
+        blocks = []
+        
+        if inode.size == 0:
+            return blocks
+            
+        if not inode.is_large():
+            # Small file - direct addresses
+            for addr in inode.addr:
+                if addr == 0:
+                    break
+                blocks.append(addr)
+        else:
+            # Large file - indirect addresses
+            for indirect_block_addr in inode.addr:
+                if indirect_block_addr == 0:
+                    break
+                    
+                # Read indirect block
+                indirect_data = self.read_block(indirect_block_addr)
+                
+                # Each entry is 2 bytes (16-bit address)
+                for i in range(0, 512, 2):
+                    if i + 2 <= len(indirect_data):
+                        block_addr = struct.unpack('<H', indirect_data[i:i+2])[0]
+                        if block_addr == 0:
+                            break
+                        blocks.append(block_addr)
+        
+        return blocks
+    
+    def read_file_data(self, inode: UnixINode) -> bytes:
+        """Read complete file content"""
+        if inode.size == 0:
+            return b''
+            
+        blocks = self.get_file_blocks(inode)
+        file_data = b''
+        
+        for block_num in blocks:
+            file_data += self.read_block(block_num)
+        
+        # Truncate to actual file size
+        return file_data[:inode.size]
+    
+    def list_directory(self, inode: UnixINode) -> List[Tuple[int, str]]:
+        """List directory contents"""
+        if not inode.is_dir():
+            return []
+            
+        dir_data = self.read_file_data(inode)
+        entries = []
+        
+        # Each directory entry is 16 bytes: 2 bytes inode + 14 bytes name
+        for i in range(0, len(dir_data), 16):
+            if i + 16 <= len(dir_data):
+                entry_data = dir_data[i:i+16]
+                inode_num, name_bytes = struct.unpack('<H14s', entry_data)
+                
+                if inode_num > 0:
+                    # Decode name (ends in NULL)
+                    name = name_bytes.rstrip(b'\x00').decode('ascii', errors='replace')
+                    entries.append((inode_num, name))
+        
+        return entries
+    
+    def find_path(self, path: str, start_inode: int = 1) -> Optional[UnixINode]:
+        """Find a file/directory by path"""
+        if path.startswith('/'):
+            path = path[1:]  # Remove initial /
+            
+        if not path:
+            # Root directory
+            return self.read_inode(start_inode)
+            
+        current_inode = self.read_inode(start_inode)
+        
+        for component in path.split('/'):
+            if not current_inode.is_dir():
+                if self.verbose:
+                    print(f"DEBUG: {component} is not a directory")
+                return None
+                
+            # Search in current directory
+            found = False
+            entries = self.list_directory(current_inode)
+            
+            if self.verbose:
+                print(f"DEBUG: Looking for '{component}' in directory with {len(entries)} entries:")
+                for inum, name in entries:
+                    print(f"  - {name} (inode {inum})")
+                    
+            for inode_num, name in entries:
+                if name == component:
+                    current_inode = self.read_inode(inode_num)
+                    found = True
+                    break
+                    
+            if not found:
+                if self.verbose:
+                    print(f"DEBUG: Component '{component}' not found")
+                return None
+        
+        return current_inode
+    
+    def extract_file(self, inode: UnixINode, output_path: Path, filename: str) -> bool:
+        """Extract a file to local filesystem"""
+        try:
+            file_data = self.read_file_data(inode)
+            
+            output_file = output_path / filename
+            
+            # Handle name conflicts
+            counter = 1
+            while output_file.exists():
+                stem = Path(filename).stem
+                suffix = Path(filename).suffix
+                output_file = output_path / f"{stem}_{counter}{suffix}"
+                counter += 1
+            
+            with open(output_file, 'wb') as f:
+                f.write(file_data)
+            
+            if self.verbose:
+                print(f"Extracted: {filename} ({len(file_data)} bytes)")
+            
+            return True
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Error extracting {filename}: {e}")
+            return False
+    
+    def extract_directory(self, inode: UnixINode, output_path: Path, dirname: str = "") -> int:
+        """Extract a directory recursively"""
+        extracted_count = 0
+        
+        # Create directory if it doesn't exist
+        if dirname:
+            dir_path = output_path / dirname
+            dir_path.mkdir(exist_ok=True)
+        else:
+            dir_path = output_path
+        
+        # List contents
+        entries = self.list_directory(inode)
+        
+        for inode_num, name in entries:
+            if name in ['.', '..']:
+                continue
+                
+            try:
+                entry_inode = self.read_inode(inode_num)
+                
+                if entry_inode.is_dir():
+                    # Extract subdirectory recursively
+                    extracted_count += self.extract_directory(entry_inode, dir_path, name)
+                else:
+                    # Extract file
+                    if self.extract_file(entry_inode, dir_path, name):
+                        extracted_count += 1
+                        
+            except Exception as e:
+                if self.verbose:
+                    print(f"Error processing {name}: {e}")
+        
+        return extracted_count
+    
+    def list_files(self, path: str = "/", detailed: bool = False) -> None:
+        """List files similar to ls -la"""
+        target_inode = self.find_path(path)
+        
+        if not target_inode:
+            print(f"Path not found: {path}")
+            return
+            
+        if not target_inode.is_dir():
+            print(f"Not a directory: {path}")
+            return
+        
+        print(f"\\nUnix PDP-11 Directory Listing: {path}")
+        print("=" * 80)
+        
+        if detailed:
+            print(f"{'Permissions':<12} {'Links':<5} {'UID':<4} {'GID':<4} {'Size':<8} {'ModTime':<19} {'Name':<20}")
+        else:
+            print(f"{'Name':<20} {'Type':<10} {'Size (bytes)':<12} {'Permissions':<12}")
+        print("-" * 80)
+        
+        entries = self.list_directory(target_inode)
+        total_size = 0
+        file_count = 0
+        dir_count = 0
+        
+        for inode_num, name in sorted(entries, key=lambda x: x[1]):
+            try:
+                entry_inode = self.read_inode(inode_num)
+                total_size += entry_inode.size
+                
+                if entry_inode.is_dir():
+                    dir_count += 1
+                else:
+                    file_count += 1
+                
+                if detailed:
+                    mod_time = entry_inode.get_unix_time()
+                    time_str = mod_time.strftime("%Y-%m-%d %H:%M:%S") if mod_time else "Unknown"
+                    
+                    print(f"{entry_inode.flags_string():<12} {entry_inode.nlinks:<5} {entry_inode.uid:<4} {entry_inode.gid:<4} {entry_inode.size:<8} {time_str:<19} {name}")
+                else:
+                    file_type = "Directory" if entry_inode.is_dir() else "File"
+                    print(f"{name:<20} {file_type:<10} {entry_inode.size:<12} {entry_inode.flags_string()}")
+                    
+            except Exception as e:
+                print(f"{name:<20} ERROR: {e}")
+        
+        print("-" * 80)
+        print(f"Summary: {file_count} files, {dir_count} directories")
+        print(f"Total size: {total_size:,} bytes")
+        print(f"Superblock info: {self.superblock.fsize} total blocks, {self.superblock.nfree} free blocks")
+
+def detect_unix_filesystem(image_path: str) -> Tuple[bool, str]:
+    """Detect if this is a valid Unix filesystem (V5, V6, V7)"""
+    try:
+        with open(image_path, 'rb') as f:
+            file_size = f.seek(0, 2)
+            f.seek(0)
+            
+            # Try different offsets for superblock
+            # V5/V6: block 1 (offset 512)
+            # V7: can be at different positions
+            superblock_offsets = [512, 0, 512 * 2]  # BLOCK_SIZE
+            
+            for sb_offset in superblock_offsets:
+                if sb_offset + 415 > file_size:  # SUPERBLOCK_SIZE
+                    continue
+                    
+                f.seek(sb_offset)
+                sb_data = f.read(415)
+                
+                if len(sb_data) < 16:  # Minimum to read isize, fsize, nfree
+                    continue
+                
+                # Try little endian and big endian
+                for endian in ['<', '>']:
+                    try:
+                        isize, fsize, nfree = struct.unpack(f'{endian}HHH', sb_data[:6])
+                        
+                        # More flexible validations for different Unix versions
+                        if (1 <= isize <= 2000 and          # Reasonable inode area
+                            fsize > isize and               # Total size larger
+                            0 <= nfree <= 200 and           # Reasonable free blocks
+                            fsize < 200000 and              # Not too large
+                            isize * 32 <= file_size):       # Inodes fit in image
+                            
+                            # Look for root inode at different positions
+                            root_positions = [
+                                512 * 2,              # V6 standard
+                                sb_offset + 415,     # Immediately after superblock
+                                512 * (2 + isize),   # After inode area
+                            ]
+                            
+                            for root_pos in root_positions:
+                                if root_pos + 32 <= file_size:  # INODE_SIZE
+                                    try:
+                                        f.seek(root_pos)
+                                        root_data = f.read(32)
+                                        
+                                        if len(root_data) == 32:
+                                            # Try to parse as inode
+                                            params = struct.unpack(f'{endian}HBBBBH8HHHH', root_data)
+                                            flag = params[0]
+                                            
+                                            # Check if it looks like a valid root directory
+                                            is_allocated = bool(flag & 0x8000)
+                                            is_directory = bool((flag & 0x4000) == 0x4000)
+                                            
+                                            if is_allocated and is_directory:
+                                                version = "V6" if sb_offset == 512 else "V5/V7"
+                                                return True, f"Unix {version} filesystem detected (isize={isize}, fsize={fsize}, endian={endian})" 
+                                                
+                                    except:
+                                        continue
+                                        
+                    except:
+                        continue
+            
+            # Alternative detection: look for typical Unix patterns
+            f.seek(0)
+            header = f.read(4096)
+            
+            # Look for typical Unix strings in first blocks
+            if any(pattern in header for pattern in [b'bin', b'etc', b'usr', b'dev', b'tmp']):
+                return True, "Unix filesystem detected (pattern-based detection)"
+                        
+        return False, "Not a valid Unix filesystem"
+        
+    except Exception as e:
+        return False, f"Error reading image: {e}"
+
+def detect_rt11_filesystem(image_path: str) -> Tuple[bool, str]:
+    """Detect if this is a valid RT-11 filesystem"""
+    try:
+        # Use existing RT-11 detection logic
+        files = scan_rt11_directory_complete(image_path, verbose=False)
+        if files and len(files) > 0:
+            return True, f"RT-11 filesystem detected ({len(files)} files found)"
+        return False, "Not a valid RT-11 filesystem"
+    except:
+        return False, "Not a valid RT-11 filesystem"
+
+def detect_filesystem_type(image_path: str) -> Tuple[str, str]:
+    """Detect filesystem type (RT-11 or Unix)"""
+    # Try Unix first
+    is_unix, unix_desc = detect_unix_filesystem(image_path)
+    if is_unix:
+        return "unix", unix_desc
+    
+    # Try RT-11
+    is_rt11, rt11_desc = detect_rt11_filesystem(image_path)
+    if is_rt11:
+        return "rt11", rt11_desc
+    
+    return "unknown", "Unknown filesystem type"
+
+if __name__ == '__main__':
+    sys.exit(main())

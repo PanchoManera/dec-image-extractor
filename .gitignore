@@ -1,3 +1,22 @@
+# Test disk images and extracted files - keep locally but don't track
+test_dsk_files/
+test_images/
+test_extractions/
+extracted_*/
+
+# Temporary files
+*.tmp
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
+
 # PyInstaller build artifacts
 build/
 dist/
