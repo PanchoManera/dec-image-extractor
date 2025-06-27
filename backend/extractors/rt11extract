@@ -1,0 +1,312 @@
+#!/usr/bin/env python3
+"""
+RT-11 Extract - Universal Wrapper
+Mantiene compatibilidad con la interfaz original pero usa el extractor universal
+que soporta tanto RT-11 como Unix PDP-11.
+
+Este wrapper:
+1. Detecta automáticamente el tipo de filesystem (RT-11 o Unix)
+2. Mapea todos los parámetros del rt11extract original
+3. Llama al extractor apropiado
+4. Mantiene 100% compatibilidad con scripts y GUI existentes
+"""
+
+import sys
+import os
+import argparse
+import subprocess
+from pathlib import Path
+
+def get_script_dir():
+    """Get the directory where this script is located"""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled executable
+        return Path(sys.executable).parent
+    else:
+        # Running as script
+        return Path(__file__).parent
+
+def detect_filesystem_type(image_path: str) -> str:
+    """
+    Detecta el tipo de filesystem en la imagen
+    Retorna 'rt11', 'unix', 'ods1', o 'unknown'
+    """
+    script_dir = get_script_dir()
+    
+    # Probar ODS-1/Files-11 PRIMERO (es más específico que RT-11)
+    try:
+        # Buscar en backend/filesystems/
+        filesystems_dir = script_dir.parent / "filesystems"
+        ods1_script = filesystems_dir / "ods1_extractor_v2.py"
+        if ods1_script.exists():
+            result = subprocess.run(
+                [sys.executable, str(ods1_script), image_path, "-a"],
+                capture_output=True, text=True, timeout=30
+            )
+            
+            if result.returncode == 0 and ("Volume Name:" in result.stdout or "RSX" in result.stdout or "Files-11" in result.stdout):
+                return "ods1"
+    except:
+        pass
+    
+    # Probar RT-11 después
+    try:
+        rt11_script = script_dir / "rt11extract_smart.py"
+        if rt11_script.exists():
+            result = subprocess.run(
+                [sys.executable, str(rt11_script), image_path, "-d"],
+                capture_output=True, text=True, timeout=30
+            )
+            
+            if result.returncode == 0 and "RT-11" in result.stdout:
+                return "rt11"
+    except:
+        pass
+    
+    # Probar Unix PDP-11
+    try:
+        # Buscar en backend/filesystems/
+        filesystems_dir = script_dir.parent / "filesystems"
+        unix_script = filesystems_dir / "unix_pdp11_extractor.py" 
+        if unix_script.exists():
+            result = subprocess.run(
+                [sys.executable, str(unix_script), image_path, "--detect-only"],
+                capture_output=True, text=True, timeout=30
+            )
+            
+            if result.returncode == 0 and "Unix" in result.stdout:
+                return "unix"
+    except:
+        pass
+    
+    # Detección manual básica
+    try:
+        with open(image_path, 'rb') as f:
+            f.seek(0)
+            boot_block = f.read(512)
+            f.seek(512)
+            block1 = f.read(512)
+            
+            # Buscar patrones RT-11
+            if any(pattern in boot_block + block1 for pattern in [b'RT11', b'RT-11']):
+                return "rt11"
+            
+            # Buscar patrones Unix
+            if any(pattern in boot_block + block1 for pattern in [b'bin', b'etc', b'usr', b'dev']):
+                return "unix"
+                
+    except:
+        pass
+    
+    # Por defecto, asumir RT-11 para compatibilidad
+    return "rt11"
+
+def call_rt11_extractor(args):
+    """Llama al extractor RT-11 original"""
+    script_dir = get_script_dir()
+    # Buscar rt11extract_backup en la raíz del proyecto (3 niveles arriba de backend/extractors)
+    project_root = script_dir.parent.parent
+    rt11_backup = project_root / "rt11extract_backup"
+    
+    if not rt11_backup.exists():
+        print(f"❌ Error: RT-11 extractor not found at {rt11_backup}")
+        return 1
+    
+    # Construir comando
+    cmd = [sys.executable, str(rt11_backup)] + sys.argv[1:]
+    
+    try:
+        # Ejecutar con la misma salida que el original
+        result = subprocess.run(cmd, capture_output=False)
+        return result.returncode
+    except Exception as e:
+        print(f"❌ Error running RT-11 extractor: {e}")
+        return 1
+
+def call_unix_extractor(args):
+    """Llama al extractor Unix PDP-11"""
+    script_dir = get_script_dir()
+    # Buscar en backend/filesystems/
+    filesystems_dir = script_dir.parent / "filesystems"
+    unix_script = filesystems_dir / "unix_pdp11_extractor.py"
+    
+    if not unix_script.exists():
+        print(f"❌ Error: Unix extractor not found at {unix_script}")
+        return 1
+    
+    # Mapear parámetros de rt11extract a unix_pdp11_extractor
+    cmd = [sys.executable, str(unix_script), args.image]
+    
+    if args.list:
+        cmd.append("-l")
+        if args.detailed:
+            cmd.append("-d")
+        # Agregar flag recursivo si está presente
+        if hasattr(args, 'recursive') and args.recursive:
+            cmd.append("-r")
+    else:
+        cmd.extend(["-o", args.output])
+    
+    if args.verbose:
+        cmd.append("-v")
+    
+    try:
+        # Ejecutar con la misma salida que el original
+        result = subprocess.run(cmd, capture_output=False)
+        return result.returncode
+    except Exception as e:
+        print(f"❌ Error running Unix extractor: {e}")
+        return 1
+
+def call_ods1_extractor(args):
+    """Llama al extractor ODS-1/Files-11 (RSX-11, VMS)"""
+    script_dir = get_script_dir()
+    # Buscar en backend/filesystems/
+    filesystems_dir = script_dir.parent / "filesystems"
+    ods1_script = filesystems_dir / "ods1_extractor_v2.py"
+    
+    if not ods1_script.exists():
+        print(f"❌ Error: ODS-1 extractor not found at {ods1_script}")
+        return 1
+    
+    # Mapear parámetros de rt11extract a ods1_extractor_v2
+    cmd = [sys.executable, str(ods1_script), args.image]
+    
+    if args.list:
+        # ODS-1 usa -a para analysis mode (similar a -l)
+        cmd.append("-a")
+    else:
+        cmd.extend(["-o", args.output])
+    
+    if args.verbose:
+        # ODS-1 no tiene flag verbose separado, pero puede dar más info
+        pass
+    
+    try:
+        # Ejecutar con la misma salida que el original
+        result = subprocess.run(cmd, capture_output=False)
+        return result.returncode
+    except Exception as e:
+        print(f"❌ Error running ODS-1 extractor: {e}")
+        return 1
+
+def call_universal_extractor(args):
+    """Llama al extractor universal (smart extractor)"""
+    script_dir = get_script_dir()
+    smart_script = script_dir / "pdp11_smart_extractor.py"
+    
+    if not smart_script.exists():
+        print(f"❌ Error: Universal extractor not found at {smart_script}")
+        return 1
+    
+    # Mapear parámetros
+    cmd = [sys.executable, str(smart_script), args.image]
+    
+    if args.list:
+        cmd.append("-l")
+        if args.detailed:
+            cmd.append("-d")
+    else:
+        cmd.extend(["-o", args.output])
+    
+    if args.verbose:
+        cmd.append("-v")
+    
+    try:
+        # Ejecutar con la misma salida
+        result = subprocess.run(cmd, capture_output=False)
+        return result.returncode
+    except Exception as e:
+        print(f"❌ Error running universal extractor: {e}")
+        return 1
+
+def main():
+    # Mantener la misma interfaz que el rt11extract original
+    parser = argparse.ArgumentParser(
+        description="RT-11 Extract - Universal Wrapper (supports RT-11 and Unix PDP-11)",
+        epilog="""Examples:
+  %(prog)s disk.dsk                    # Auto-detect and extract all files
+  %(prog)s disk.dsk -l                 # Auto-detect and list files
+  %(prog)s disk.dsk -l -d              # List with detailed info
+  %(prog)s disk.dsk -t                 # Include tentative files (RT-11 only)
+  %(prog)s disk.dsk --no-strict        # Continue despite errors (RT-11 only)
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    parser.add_argument("image", help="Disk image file (.dsk, .img, etc.)")
+    parser.add_argument("-o", "--output", default="extracted", 
+                       help="Output directory for extracted files (default: extracted)")
+    parser.add_argument("-l", "--list", action="store_true", 
+                       help="List files only, don't extract")
+    parser.add_argument("-d", "--detailed", action="store_true",
+                       help="Show detailed file information")
+    parser.add_argument("-t", "--tentative", action="store_true",
+                       help="Include tentative (temporary) files in extraction (RT-11 only)")
+    parser.add_argument("-v", "--verbose", action="store_true", 
+                       help="Verbose output with detailed logging")
+    parser.add_argument("--no-strict", action="store_true",
+                       help="Continue extraction despite errors (RT-11 only)")
+    parser.add_argument("--validate", action="store_true",
+                       help="Perform comprehensive filesystem validation (RT-11 only)")
+    parser.add_argument("--enhanced", action="store_true",
+                       help="Use enhanced extraction method (RT-11 only)")
+    parser.add_argument("--force-rt11", action="store_true",
+                       help="Force RT-11 mode (bypass auto-detection)")
+    parser.add_argument("--force-unix", action="store_true",
+                       help="Force Unix mode (bypass auto-detection)")
+    parser.add_argument("--use-universal", action="store_true",
+                       help="Use universal extractor (auto-detect + appropriate extractor)")
+    parser.add_argument("-r", "--recursive", action="store_true",
+                       help="List files recursively (Unix only)")
+    
+    args = parser.parse_args()
+    
+    # Verificar que el archivo existe
+    if not os.path.exists(args.image):
+        print(f"❌ Error: File '{args.image}' not found")
+        return 1
+    
+    # Determinar qué extractor usar
+    if args.force_rt11:
+        if args.verbose:
+            print("🔧 Forced RT-11 mode")
+        return call_rt11_extractor(args)
+    elif args.force_unix:
+        if args.verbose:
+            print("🔧 Forced Unix mode")
+        return call_unix_extractor(args)
+    elif args.use_universal:
+        if args.verbose:
+            print("🔧 Using universal extractor")
+        return call_universal_extractor(args)
+    else:
+        # Auto-detectar tipo de filesystem
+        if args.verbose:
+            print(f"🔍 Auto-detecting filesystem type in: {args.image}")
+        
+        fs_type = detect_filesystem_type(args.image)
+        
+        if args.verbose:
+            if fs_type == "rt11":
+                print("✅ RT-11 filesystem detected, using RT-11 extractor")
+            elif fs_type == "unix":
+                print("✅ Unix PDP-11 filesystem detected, using Unix extractor")
+            elif fs_type == "ods1":
+                print("✅ ODS-1/Files-11 filesystem detected, using RSX-11/VMS extractor")
+            else:
+                print("❓ Unknown filesystem, defaulting to RT-11 extractor")
+        
+        # Llamar al extractor apropiado
+        if fs_type == "rt11":
+            return call_rt11_extractor(args)
+        elif fs_type == "unix":
+            return call_unix_extractor(args)
+        elif fs_type == "ods1":
+            return call_ods1_extractor(args)
+        else:
+            # Por defecto usar RT-11 para compatibilidad
+            return call_rt11_extractor(args)
+
+if __name__ == '__main__':
+    sys.exit(main())

@@ -86,3 +86,9 @@ python_winarm64/
 *-Test/
 test_images/
 BUILD_SUMMARY/
+
+# Additional ignored files and directories
+fsx_repo/
+simh/
+putr.asm
+files11_reference.cs
