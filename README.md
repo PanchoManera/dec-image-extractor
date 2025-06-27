@@ -1,4 +1,23 @@
-# RT-11 Extractor
+# ⚠️ LEGACY REPOSITORY - DO NOT USE ⚠️
+
+## 🚨 THIS PROJECT HAS MOVED TO: [dec-image-extractor](https://github.com/PanchoManera/dec-image-extractor) 🚨
+
+### 📢 IMPORTANT NOTICE
+
+This repository (`rt11_Extractor`) is now **LEGACY** and **NO LONGER MAINTAINED**.
+
+**What happened?**
+- This project originally started as an RT-11 specific disk image extractor
+- Over time, support was added for multiple DEC disk formats (Unix V5/V6, RSX-11, PDP-8 OS/8, etc.)
+- To better reflect its expanded capabilities, the project was moved to a new repository with a more appropriate name
+
+**✅ NEW REPOSITORY:** https://github.com/PanchoManera/dec-image-extractor
+
+**⛔ DO NOT USE THIS REPOSITORY** - It will not receive updates, bug fixes, or new features.
+
+---
+
+# RT-11 Extractor (LEGACY)
 
 Complete toolkit for extracting files from RT-11 disk images and converting ImageDisk (IMD) files with modern GUI and command-line interfaces.
 
