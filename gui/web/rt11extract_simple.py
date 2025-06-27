@@ -1126,16 +1126,18 @@ class RequestHandler(http.server.SimpleHTTPRequestHandler):
 
 
 def main():
-    PORT = 8000
+    # Use PORT environment variable for Railway deployment, fallback to 8000 for local development
+    PORT = int(os.environ.get('PORT', 8000))
+    HOST = "0.0.0.0"  # Listen on all interfaces for Railway
     
     print(f"🖥️ DEC Disk Image Extractor - Web Interface")
     print(f"📊 Supports: RT-11, RSX-11 (ODS-1), Unix PDP-11")
-    print(f"🌐 Server starting on http://localhost:{PORT}")
+    print(f"🌐 Server starting on http://{HOST}:{PORT}")
     print(f"🔧 Using extractor: {rt11extract_path}")
-    print(f"\n🚀 Open your browser and navigate to: http://localhost:{PORT}")
+    print(f"\n🚀 Server ready on port {PORT}")
     print(f"📝 Press Ctrl+C to stop the server\n")
     
-    with socketserver.TCPServer(("", PORT), RequestHandler) as httpd:
+    with socketserver.TCPServer((HOST, PORT), RequestHandler) as httpd:
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
