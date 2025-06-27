@@ -1,1 +1,1 @@
-web: python rt11extract_simple.py
+web: python gui/web/rt11extract_simple.py
