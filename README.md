@@ -133,9 +133,50 @@ Pre-built executables are automatically generated for all platforms and availabl
 - **Windows**: [WinFsp](https://winfsp.dev/) - Required for mounting RT-11 images as drive letters
   - Download from: https://github.com/winfsp/winfsp/releases
 
-## 🛠️ **Development**
+## 🛠️ **Development and New Features**
 
 All components are written in pure Python with no external dependencies beyond the standard library.
+
+### New Features and Support:
+- **Support for Unix V5, Unix V6, and RSX11 (File11 / ODS-1) variants**
+  - Unix System V: Lists and extracts the complete directory tree.
+- **Reference:** [FSX by kgober](https://github.com/kgober/FSX/blob/master/F)
+- **In Development:** Support for PDP/8 (OS8) and Unix V7
+
+### Development Setup
+
+For GUI development with FUSE support, a Python virtual environment is recommended:
+
+```bash
+# Navigate to GUI directory
+cd gui/desktop
+
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install required dependencies
+pip install fusepy pillow
+
+# Run the GUI
+python rt11extract_gui.py
+```
+
+**Note**: The virtual environment is required for FUSE mounting functionality. If you encounter "fusepy not found" errors, ensure the virtual environment is activated and fusepy is installed.
+
+#### FUSE Mounting Setup (macOS/Linux)
+
+For filesystem mounting to work properly, ensure the required symbolic links are in place:
+
+```bash
+# Create symbolic links in filesystem_mount directory
+cd backend/filesystem_mount
+ln -sf ../extractors/rt11extract rt11extract
+ln -sf ../extractors/rt11extract rt11extract_cli
+ln -sf ../extractors/universal_extractor.py pdp11_smart_extractor.py
+```
+
+These links allow the FUSE driver to locate the extraction engines.
 
 ### Architecture
 - **rt11extract** - Core extraction engine with RT-11 filesystem parser
