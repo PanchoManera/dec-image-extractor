@@ -13,7 +13,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        arch: [x64, x86, arm64]
+        arch: [x64]  # Only build x64 for now to simplify
     
     steps:
     - uses: actions/checkout@v4
@@ -22,60 +22,33 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        architecture: ${{ matrix.arch == 'x86' && 'x86' || 'x64' }}
+        architecture: 'x64'
     
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller pillow refuse fusepy
+        pip install pyinstaller pillow
     
-    - name: Build executable with PyInstaller
+    - name: Build GUI executable only
       run: |
-        if (Test-Path "icon.png") {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png;." --add-data "rt11_winfsp.py;." --add-data "rt11_mount.bat;." --add-data "setup_winfsp.bat;." --hidden-import=refuse --hidden-import=fuse rt11extract_gui.py
-        } else {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --add-data "rt11_winfsp.py;." --add-data "rt11_mount.bat;." --add-data "setup_winfsp.bat;." --hidden-import=refuse --hidden-import=fuse rt11extract_gui.py
-        }
+        # Set environment variables for PyInstaller
+        $env:PYTHONPATH = "."
         
-    - name: Build CLI executable
-      run: |
-        pyinstaller --onefile --name "RT11Extract" rt11extract
-        
-    - name: Build IMD converter
-      run: |
-        pyinstaller --onefile --name "imd2raw" imd2raw.py
-        
-    - name: Build WinFsp driver
-      run: |
-        pyinstaller --onefile --name "rt11_winfsp" --hidden-import=refuse --hidden-import=fuse rt11_winfsp.py
+        # Build only the GUI with minimal configuration
+        pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." rt11extract_gui.py
     
     - name: Create Windows package
       run: |
         mkdir RT11Extractor-Windows-${{ matrix.arch }}
-        copy dist\RT11ExtractGUI.exe RT11Extractor-Windows-${{ matrix.arch }}\
-        copy dist\RT11Extract.exe RT11Extractor-Windows-${{ matrix.arch }}\
-        copy dist\imd2raw.exe RT11Extractor-Windows-${{ matrix.arch }}\
-        copy dist\rt11_winfsp.exe RT11Extractor-Windows-${{ matrix.arch }}\
-        copy rt11_mount.bat RT11Extractor-Windows-${{ matrix.arch }}\
-        copy setup_winfsp.bat RT11Extractor-Windows-${{ matrix.arch }}\
-        copy README.md RT11Extractor-Windows-${{ matrix.arch }}\
+        # Only copy files that were actually built
+        if (Test-Path "dist\RT11ExtractGUI.exe") { copy dist\RT11ExtractGUI.exe RT11Extractor-Windows-${{ matrix.arch }}\ }
+        if (Test-Path "README.md") { copy README.md RT11Extractor-Windows-${{ matrix.arch }}\ }
         echo "RT-11 Extractor para Windows ${{ matrix.arch }}" > RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "Ejecutables incluidos:" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "- RT11ExtractGUI.exe (Interfaz gráfica con soporte IMD y WinFsp)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "- RT11Extract.exe (Extractor línea de comandos)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "- imd2raw.exe (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "- rt11_winfsp.exe (Driver WinFsp standalone)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "- setup_winfsp.bat (Configuración de WinFsp)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "- RT11ExtractGUI.exe (Interfaz gráfica)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
         echo "Para usar la interfaz gráfica, ejecute RT11ExtractGUI.exe" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "Para extraer archivos desde línea de comandos: RT11Extract.exe imagen.dsk -o carpeta/" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "Para convertir ImageDisk: imd2raw.exe imagen.imd imagen.dsk" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "Para montaje de sistema de archivos (WinFsp):" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "1. Instale WinFsp desde https://winfsp.dev/" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "2. Ejecute setup_winfsp.bat para configurar" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
-        echo "3. Use el botón 'Mount as Filesystem' en la GUI" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
     
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
