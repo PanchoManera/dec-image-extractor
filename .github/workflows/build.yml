@@ -2,27 +2,13 @@ name: Build RT11 Extractor GUI
 
 on:
   push:
-    tags:
-      - 'v*'
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   build:
     strategy:
       matrix:
-        os: [macos-latest, windows-latest]
-        python-version: ['3.11']
-        include:
-          - os: macos-latest
-            output_name: RT11ExtractGUI.app
-            artifact_name: RT11ExtractGUI-macOS
-          - os: windows-latest
-            output_name: RT11ExtractGUI
-            artifact_name: RT11ExtractGUI-Windows-x64
+        os: [windows-latest, macos-latest]
 
     runs-on: ${{ matrix.os }}
 
@@ -32,115 +18,82 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: '3.11'
 
-    - name: Install Python dependencies
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
+        pip install pyinstaller pillow
 
-    # Paso específico para macOS: Compilar CLIs
-    - name: Setup CLI Tools (macOS)
-      if: runner.os == 'macOS'
+    - name: Build Windows Executables
+      if: matrix.os == 'windows-latest'
       run: |
-        # Crear directorios
-        mkdir -p dist/RT11ExtractGUI.app/Contents/cli
-        mkdir -p cli_build
+        mkdir -p RT11Extract-Windows
         
-        # Compilar rt11extract_cli
-        cd cli_build
-        cp ../backend/extractors/rt11extract rt11extract.py
-        pyinstaller --onefile rt11extract.py --name rt11extract_cli
-        chmod +x dist/rt11extract_cli
-        cp dist/rt11extract_cli ../dist/RT11ExtractGUI.app/Contents/cli/
+        # Build CLI tools
+        pyinstaller --onefile --name RT11Extract --paths backend --paths . backend/extractors/rt11extract
+        pyinstaller --onefile --name rt11extract_universal --paths backend --paths . backend/extractors/rt11extract_universal
+        pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py
+        pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
         
-        # Compilar universal_extractor
-        cp ../backend/extractors/universal_extractor.py .
-        pyinstaller --onefile universal_extractor.py --name universal_extractor
-        chmod +x dist/universal_extractor
-        cp dist/universal_extractor ../dist/RT11ExtractGUI.app/Contents/cli/
+        # Build GUI
+        pyinstaller --onefile --windowed --icon=rt11_icon.ico --name RT11ExtractGUI --paths backend --paths . \
+          --add-data "backend/extractors;backend/extractors" \
+          --add-data "backend/filesystems;backend/filesystems" \
+          gui/desktop/rt11extract_gui.py
         
-        # Compilar imd2raw
-        cp ../backend/image_converters/imd2raw.py .
-        pyinstaller --onefile imd2raw.py --name imd2raw
-        chmod +x dist/imd2raw
-        cp dist/imd2raw ../dist/RT11ExtractGUI.app/Contents/cli/
+        # Copy all executables
+        copy dist\RT11Extract.exe RT11Extract-Windows\
+        copy dist\rt11extract_universal.exe RT11Extract-Windows\
+        copy dist\universal_extractor.exe RT11Extract-Windows\
+        copy dist\imd2raw.exe RT11Extract-Windows\
+        copy dist\RT11ExtractGUI.exe RT11Extract-Windows\
+        copy rt11_icon.ico RT11Extract-Windows\
         
-        # Compilar rt11_fuse
-        cp ../backend/filesystem_mount/rt11_fuse_universal.py .
-        pyinstaller --onefile rt11_fuse_universal.py --name rt11_fuse
-        chmod +x dist/rt11_fuse
-        cp dist/rt11_fuse ../dist/RT11ExtractGUI.app/Contents/cli/
-        
-        cd ..
+        # Create ZIP
+        7z a RT11Extract-Windows.zip RT11Extract-Windows\*
 
-    # Paso específico para Windows: Compilar CLIs
-    - name: Setup CLI Tools (Windows)
-      if: runner.os == 'Windows'
+    - name: Build macOS Executables
+      if: matrix.os == 'macos-latest'
       run: |
-        # Create build directory
-        mkdir cli_build
-        cd cli_build
+        mkdir -p RT11Extract-macOS.app/Contents/cli
         
-        # Build rt11extract_cli
-        copy ..\backend\extractors\rt11extract rt11extract.py
-        pyinstaller --onefile rt11extract.py --name rt11extract_cli
+        # Build CLI tools
+        pyinstaller --onefile --name rt11extract --paths backend --paths . backend/extractors/rt11extract
+        pyinstaller --onefile --name rt11extract_universal --paths backend --paths . backend/extractors/rt11extract_universal
+        pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py
+        pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
         
-        # Build universal_extractor
-        copy ..\backend\extractors\universal_extractor.py .
-        pyinstaller --onefile universal_extractor.py --name rt11extract_universal
+        # Move CLIs to bundle
+        cp dist/rt11extract RT11Extract-macOS.app/Contents/cli/
+        cp dist/rt11extract_universal RT11Extract-macOS.app/Contents/cli/
+        cp dist/universal_extractor RT11Extract-macOS.app/Contents/cli/
+        cp dist/imd2raw RT11Extract-macOS.app/Contents/cli/
         
-        # Build imd2raw
-        copy ..\backend\image_converters\imd2raw.py .
-        pyinstaller --onefile imd2raw.py --name imd2raw
+        # Make CLIs executable
+        chmod +x RT11Extract-macOS.app/Contents/cli/*
         
-        # Copy all executables to root
-        copy dist\rt11extract_cli.exe ..\RT11Extract.exe
-        copy dist\rt11extract_universal.exe ..\rt11extract_universal.exe
-        copy dist\imd2raw.exe ..\imd2raw.exe
+        # Build GUI
+        pyinstaller --windowed --name RT11ExtractGUI --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --add-data "RT11Extract-macOS.app/Contents/cli:cli" \
+          gui/desktop/rt11extract_gui.py
         
-        # Create and copy mount script
-        echo "@echo off" > ..\rt11_mount.bat
-        echo "python %%~dp0\backend\filesystem_mount\rt11_fuse_universal.py %%*" >> ..\rt11_mount.bat
-        
-        cd ..
+        # Create DMG
+        hdiutil create -volname "RT11 Extract" -srcfolder dist/RT11ExtractGUI.app -ov -format UDZO RT11Extract-macOS.dmg
 
-    - name: Build GUI Application
-      run: |
-        pyinstaller rt11extract.spec
-
-    - name: Create ZIP Archive
-      run: |
-        cd dist
-        if [ "${{ runner.os }}" = "macOS" ]; then
-          zip -r ${{ matrix.artifact_name }}.zip RT11ExtractGUI.app
-        else
-          7z a ${{ matrix.artifact_name }}.zip RT11ExtractGUI/
-        fi
-      shell: bash
-
-    - name: Upload Build Artifact
+    - name: Upload Windows Artifact
+      if: matrix.os == 'windows-latest'
       uses: actions/upload-artifact@v3
       with:
-        name: ${{ matrix.artifact_name }}
-        path: dist/${{ matrix.artifact_name }}.zip
+        name: RT11Extract-Windows
+        path: RT11Extract-Windows.zip
 
-  # Job para crear release cuando se hace push de un tag
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Download Artifacts
-      uses: actions/download-artifact@v3
-
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
+    - name: Upload macOS Artifact
+      if: matrix.os == 'macos-latest'
+      uses: actions/upload-artifact@v3
       with:
-        files: |
-          RT11ExtractGUI-macOS/*.zip
-          RT11ExtractGUI-Windows-x64/*.zip
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        name: RT11Extract-macOS
+        path: RT11Extract-macOS.dmg

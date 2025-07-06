@@ -38,10 +38,11 @@ def get_rt11extract_cli_path():
         if sys.platform.startswith('win'):
             # Windows: Try all possible CLI executables
             cli_options = [
-                "RT11Extract.exe",           # Main CLI name
-                "rt11extract_universal.exe", # Universal extractor
-                "rt11extract_cli.exe",      # Alternative name
-                "rt11extract.exe"           # Basic name with .exe
+                "RT11Extract.exe",              # Main CLI name
+                "rt11extract_universal.exe",     # Universal extractor
+                "rt11extract_cli.exe",          # Alternative name
+                "rt11extract.exe",              # Basic name with .exe
+                "universal_extractor.exe"       # Another possible name
             ]
             
             for cli in cli_options:
