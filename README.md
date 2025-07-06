@@ -35,9 +35,18 @@ RT-11 was a real-time operating system developed by Digital Equipment Corporatio
 ## 🚀 **Quick Start**
 
 ### Option 1: Desktop GUI (Recommended)
+
+**Con soporte FUSE (recomendado):**
 ```bash
-python3 rt11extract_gui.py
+cd gui/desktop
+./run_gui.sh
 ```
+
+**Sin soporte FUSE:**
+```bash
+python3 gui/desktop/rt11extract_gui.py
+```
+
 *Supports both DSK and IMD files with automatic conversion*
 
 ![Desktop GUI](screenshots/desktopgui-v2.png)
@@ -145,6 +154,23 @@ Pre-built executables are automatically generated for all platforms and availabl
   - Arch Linux: `sudo pacman -S fuse2`
 - **Windows**: [WinFsp](https://winfsp.dev/) - Required for mounting RT-11 images as drive letters
   - Download from: https://github.com/winfsp/winfsp/releases
+
+### Python Dependencies for FUSE
+Para el soporte completo de montaje FUSE, use el script de lanzamiento que configura automáticamente el entorno virtual:
+
+```bash
+cd gui/desktop
+./run_gui.sh  # Configura automáticamente fusepy y pillow
+```
+
+O configure manualmente:
+```bash
+cd gui/desktop
+python3 -m venv venv
+source venv/bin/activate
+pip install fusepy pillow
+python rt11extract_gui.py
+```
 
 ## 🛠️ **Development and New Features**
 
