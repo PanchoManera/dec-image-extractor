@@ -208,81 +208,9 @@ jobs:
         name: RT11Extractor-macOS-universal
         path: RT11Extractor-macOS-universal/
 
-  build-linux:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y python3-tk
-    
-    - name: Install Python dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pyinstaller pillow
-    
-    - name: Build Linux executables with complete backend
-      run: |
-        export PYTHONPATH="."
-        
-        # 1. Build CLI extractor (main wrapper)
-        pyinstaller --onefile --name "RT11Extract" --paths="backend" --paths="." --add-data "backend:backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" backend/extractors/rt11extract
-        
-        # 2. Build IMD converter
-        pyinstaller --onefile --name "imd2raw" --paths="backend" --paths="." backend/image_converters/imd2raw.py
-        
-        # 3. Build GUI with ALL backend embedded (including filesystem_mount for FUSE)
-        if [ -f "icon.png" ]; then
-          pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "icon.png:." --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" gui/desktop/rt11extract_gui.py
-        else
-          pyinstaller --onefile --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend:backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" gui/desktop/rt11extract_gui.py
-        fi
-    
-    - name: Create Linux package
-      run: |
-        mkdir RT11Extractor-Linux-x64
-        # Copy executables
-        cp dist/RT11Extract RT11Extractor-Linux-x64/
-        cp dist/RT11ExtractGUI RT11Extractor-Linux-x64/
-        cp dist/imd2raw RT11Extractor-Linux-x64/
-        # Set permissions
-        chmod +x RT11Extractor-Linux-x64/RT11Extract
-        chmod +x RT11Extractor-Linux-x64/RT11ExtractGUI
-        chmod +x RT11Extractor-Linux-x64/imd2raw
-        # Copy documentation
-        cp README.md RT11Extractor-Linux-x64/
-        # Create Linux-specific README
-        echo "RT-11 Extractor para Linux x64" > RT11Extractor-Linux-x64/README_Linux.txt
-        echo "" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "Ejecutables incluidos:" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "- RT11ExtractGUI (Interfaz grafica completa con TODO el backend integrado)" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "- RT11Extract (CLI extractor universal)" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "Uso:" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "./RT11ExtractGUI (interfaz grafica)" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "./RT11Extract imagen.dsk -o carpeta/ (extractor)" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "./imd2raw imagen.imd imagen.dsk (conversor)" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "" >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "La GUI incluye TODOS los extractores y convertidores del backend integrados." >> RT11Extractor-Linux-x64/README_Linux.txt
-        echo "No necesita archivos adicionales para funcionar." >> RT11Extractor-Linux-x64/README_Linux.txt
-    
-    - name: Upload Linux artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: RT11Extractor-Linux-x64
-        path: RT11Extractor-Linux-x64/
 
   create-release:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     
@@ -325,11 +253,6 @@ jobs:
           - rt11extract_cli (CLI universal)
           - imd2raw (Conversor IMD)
           
-          ## Linux x64
-          - RT11ExtractGUI (GUI completa)
-          - RT11Extract (CLI universal)
-          - imd2raw (Conversor IMD)
-          
           ### Características incluidas:
           - ✅ Extractores RT-11, Unix PDP-11, ODS-1/Files-11
           - ✅ Conversor ImageDisk (IMD) a DSK/RAW
@@ -340,7 +263,7 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-summary:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows, build-macos]
     runs-on: ubuntu-latest
     if: always()
     
