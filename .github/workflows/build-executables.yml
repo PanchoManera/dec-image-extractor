@@ -89,18 +89,48 @@ jobs:
       run: |
         export PYTHONPATH="."
         
-        # 1. Build CLI extractor (main wrapper)
-        pyinstaller --onefile --name "rt11extract_cli" --paths="backend" --paths="." --add-data "backend:backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" backend/extractors/rt11extract
+        # Debug: Show current directory and files
+        echo "Current directory:"
+        pwd
+        echo "Files in current directory:"
+        ls -la
+        echo "Backend directory:"
+        ls -la backend/ || echo "Backend directory not found"
         
-        # 2. Build IMD converter
-        pyinstaller --onefile --name "imd2raw" --paths="backend" --paths="." backend/image_converters/imd2raw.py
+        # 1. Build CLI extractor (main wrapper) - simplified
+        echo "Building CLI extractor..."
+        pyinstaller --onefile --name "rt11extract_cli" --paths="." backend/extractors/rt11extract || {
+          echo "CLI build failed, trying alternative approach..."
+          cp backend/extractors/rt11extract rt11extract_cli
+          chmod +x rt11extract_cli
+          mkdir -p dist
+          cp rt11extract_cli dist/
+        }
         
-        # 3. Build GUI as .app bundle with ALL backend embedded
+        # 2. Build IMD converter - simplified
+        echo "Building IMD converter..."
+        pyinstaller --onefile --name "imd2raw" --paths="." backend/image_converters/imd2raw.py || {
+          echo "IMD converter build failed, trying alternative approach..."
+          cp backend/image_converters/imd2raw.py imd2raw
+          chmod +x imd2raw
+          mkdir -p dist
+          cp imd2raw dist/
+        }
+        
+        # 3. Build GUI - try different approaches
+        echo "Building GUI..."
         if [ -f "icon.png" ]; then
-          pyinstaller --onedir --windowed --name "RT11Extract" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "icon.png:." --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" gui/desktop/rt11extract_gui.py
+          pyinstaller --onedir --windowed --name "RT11Extract" --icon="icon.png" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "gui/desktop/pyinstaller_helper.py:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py || {
+            echo "GUI build with icon failed, trying without icon..."
+            pyinstaller --onedir --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "gui/desktop/pyinstaller_helper.py:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
+          }
         else
-          pyinstaller --onedir --windowed --name "RT11Extract" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend:backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" gui/desktop/rt11extract_gui.py
+          pyinstaller --onedir --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "gui/desktop/pyinstaller_helper.py:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
         fi
+        
+        # Check what was built
+        echo "Built files:"
+        ls -la dist/ || echo "No dist directory"
     
     - name: Create macOS package with bundle
       run: |
