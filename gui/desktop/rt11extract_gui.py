@@ -123,6 +123,9 @@ class RT11ExtractGUI:
         
         self.check_rt11extract()
         
+        # Show startup warning about filesystem mounting (after UI is ready)
+        self.root.after(500, self.show_startup_warning)
+        
         # Debug CLI path resolution
         self.log(f"DEBUG: Resolved CLI path: {rt11extract_path}")
         self.log(f"DEBUG: CLI exists: {rt11extract_path.exists() if rt11extract_path else False}")
@@ -1321,6 +1324,31 @@ class RT11ExtractGUI:
             self.root.after(0, lambda: self.progress_bar.config(mode='determinate'))
             self.root.after(0, lambda: self.progress_var.set("Ready"))
             
+    def show_startup_warning(self):
+        """Show startup warning about filesystem mounting development status"""
+        warning_text = """RT-11 Extract GUI - Filesystem Mounting Status
+
+⚠️  FILESYSTEM MOUNTING IN DEVELOPMENT  ⚠️
+
+The "Mount as Filesystem" feature is currently under active development:
+
+• May not work reliably on all systems
+• Requires additional drivers (macFUSE on macOS, WinFsp on Windows)
+• Some disk images may not mount correctly
+• Unmounting may occasionally require manual intervention
+
+✅ STABLE FEATURES:
+• File scanning and browsing
+• Individual and batch file extraction
+• IMD to DSK conversion
+• All extraction functionality
+
+These core features are fully tested and reliable for production use.
+
+Click OK to continue..."""
+        
+        messagebox.showinfo("Development Notice", warning_text)
+        
     def show_about(self):
         """Show about dialog"""
         about_text = """RT-11 Extract GUI
@@ -1332,6 +1360,7 @@ Features:
 • Convert ImageDisk (.imd) files to DSK/RAW format
 • Browse and preview file contents
 • Batch extraction capabilities
+• Filesystem mounting (experimental)
 
 Based on the RT-11 file system used by
 Digital Equipment Corporation (DEC) computers."""
