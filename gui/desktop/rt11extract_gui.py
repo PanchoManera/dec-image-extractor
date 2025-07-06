@@ -470,69 +470,127 @@ class RT11ExtractGUI:
             self.root.after(0, self._scan_finished)
             
     def _perform_scan(self, disk_file: str):
-        """Perform the actual scan operation"""
-        # Create a temporary directory for list operation to avoid read-only filesystem issues
-        list_dir = self.temp_dir / 'list_output'
-        list_dir.mkdir(exist_ok=True)
-        
-        # First, try to get detailed listing for Unix files (using -l -d flags)
-        list_result = None
-        try:
-            if getattr(sys, 'frozen', False):
-                # Running as bundled executable
-                list_cmd = [str(rt11extract_path), disk_file, '-l', '-d', '-r', '-v']
-            else:
-                # Running as script
-                list_cmd = [sys.executable, str(rt11extract_path), disk_file, '-l', '-d', '-r', '-v']
-            
-            self.log(f"Getting detailed file list: {' '.join(list_cmd)}")
-            list_result = subprocess.run(list_cmd, **self._get_subprocess_kwargs())
-            
-            if list_result.stdout:
-                self.log("List STDOUT:")
-                for line in list_result.stdout.split('\n'):
-                    if line.strip():
-                        self.log(f"  {line}")
-        except Exception as e:
-            self.log(f"Warning: Could not get detailed listing: {e}")
-        
-        # Then run rt11extract to actually extract files for verification
+        """Perform the actual scan operation using backend directly"""
+        # Create a temporary directory for scan operation
         scan_dir = self.temp_dir / 'scan_output'
         scan_dir.mkdir(exist_ok=True)
         
-        if getattr(sys, 'frozen', False):
-            # Running as bundled executable - run rt11extract directly (it's included in bundle)
-            cmd = [str(rt11extract_path), disk_file, '-o', str(scan_dir), '-v']
+        try:
+            # Use backend directly instead of calling external CLI
+            self.log(f"Scanning disk image: {disk_file}")
+            
+            # Import backend modules directly
+            sys.path.insert(0, str(backend_path)) if backend_path else None
+            
+            # Try to import and use the smart extractor directly
+            try:
+                from extractors.pdp11_smart_extractor import UniversalExtractor
+                extractor = UniversalExtractor(disk_file, str(scan_dir), verbose=True)
+                
+                # First get file list
+                files_info = extractor.list_files()
+                if files_info:
+                    self.log(f"Found {len(files_info)} files in image")
+                    
+                    # Convert to our format
+                    files = []
+                    for file_info in files_info:
+                        files.append({
+                            'filename': file_info.get('name', 'Unknown'),
+                            'size_blocks': file_info.get('blocks', 0),
+                            'size_bytes': file_info.get('size', 0),
+                            'file_type': file_info.get('type', 'Unknown'),
+                            'creation_date': file_info.get('date', 'Unknown'),
+                            'path': file_info.get('path', '')
+                        })
+                    
+                    self.current_files = files
+                    self.root.after(0, self._update_files_ui, files)
+                    self.log(f"Scan completed successfully! Found {len(files)} files.")
+                    return
+                    
+            except ImportError as e:
+                self.log(f"Could not import smart extractor: {e}, trying RT-11 extractor")
+            
+            # Fallback: try RT-11 extractor directly
+            try:
+                from extractors.rt11extract_smart import RT11Extractor
+                extractor = RT11Extractor()
+                
+                # Extract to temp directory to get file list
+                result = extractor.extract_disk(disk_file, str(scan_dir), list_only=True)
+                
+                if result and 'files' in result:
+                    files = []
+                    for file_info in result['files']:
+                        files.append({
+                            'filename': file_info.get('name', 'Unknown'),
+                            'size_blocks': file_info.get('blocks', 0),
+                            'size_bytes': file_info.get('size', 0),
+                            'file_type': file_info.get('type', 'File'),
+                            'creation_date': file_info.get('date', 'Unknown'),
+                            'path': file_info.get('path', '')
+                        })
+                    
+                    self.current_files = files
+                    self.root.after(0, self._update_files_ui, files)
+                    self.log(f"Scan completed successfully! Found {len(files)} files.")
+                    return
+                    
+            except ImportError as e:
+                self.log(f"Could not import RT-11 extractor: {e}, falling back to CLI")
+            
+            # Last resort: use CLI but redirect output properly
+            self._perform_scan_via_cli(disk_file, scan_dir)
+            
+        except Exception as e:
+            self.log(f"Exception during backend scan: {str(e)}")
+            # Fallback to CLI method
+            self._perform_scan_via_cli(disk_file, scan_dir)
+    
+    def _perform_scan_via_cli(self, disk_file: str, scan_dir: Path):
+        """Fallback method using CLI when backend import fails"""
+        self.log("Using CLI fallback method")
+        
+        # Build command - but ensure we don't open GUI
+        if getattr(sys, 'frozen', False) and rt11extract_path and rt11extract_path.exists():
+            # Running as bundled executable - use external CLI if available
+            cmd = [str(rt11extract_path), disk_file, '-o', str(scan_dir), '-v', '--no-gui']
         else:
-            # Running as script - run rt11extract with python (it's a python script)
-            cmd = [sys.executable, str(rt11extract_path), disk_file, '-o', str(scan_dir), '-v']
-        self.log(f"Running: {' '.join(cmd)}")
+            # Running as script or no external CLI - use backend script directly
+            backend_script = backend_path / 'extractors' / 'rt11extract' if backend_path else None
+            if backend_script and backend_script.exists():
+                cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
+            else:
+                raise FileNotFoundError("No extractor available")
+        
+        self.log(f"Running CLI: {' '.join(cmd)}")
         
         result = subprocess.run(cmd, **self._get_subprocess_kwargs())
         
         if result.stdout:
-            self.log("STDOUT:")
+            self.log("CLI STDOUT:")
             for line in result.stdout.split('\n'):
                 if line.strip():
                     self.log(f"  {line}")
         
         if result.stderr:
-            self.log("STDERR:")
+            self.log("CLI STDERR:")
             for line in result.stderr.split('\n'):
                 if line.strip():
                     self.log(f"  {line}")
         
         if result.returncode == 0:
-            # Parse extracted files with detailed listing info
-            files = self._parse_extracted_files(scan_dir, result.stdout, list_result)
+            # Parse extracted files
+            files = self._parse_extracted_files(scan_dir, result.stdout, None)
             self.current_files = files
             
             # Update UI in main thread
             self.root.after(0, self._update_files_ui, files)
-            self.log(f"Scan completed successfully! Found {len(files)} files.")
+            self.log(f"CLI scan completed successfully! Found {len(files)} files.")
         else:
-            self.log(f"Error: rt11extract failed with return code {result.returncode}")
-            self.root.after(0, self._scan_error, f"rt11extract failed with return code {result.returncode}")
+            self.log(f"Error: CLI failed with return code {result.returncode}")
+            self.root.after(0, self._scan_error, f"Extractor failed with return code {result.returncode}")
             
     def _scan_finished(self):
         """Re-enable UI after scan"""
