@@ -555,7 +555,7 @@ class RT11ExtractGUI:
         # Build command - but ensure we don't open GUI
         if getattr(sys, 'frozen', False) and rt11extract_path and rt11extract_path.exists():
             # Running as bundled executable - use external CLI if available
-            cmd = [str(rt11extract_path), disk_file, '-o', str(scan_dir), '-v', '--no-gui']
+            cmd = [str(rt11extract_path), disk_file, '-o', str(scan_dir), '-v']
         else:
             # Running as script or no external CLI - use backend script directly
             backend_script = backend_path / 'extractors' / 'rt11extract' if backend_path else None
