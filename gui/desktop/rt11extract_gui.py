@@ -35,18 +35,25 @@ def get_rt11extract_cli_path():
         # En modo frozen/bundle
         exe_dir = Path(sys.executable).parent
         
-        if sys.platform.startswith('win'):
-            # Windows: Try all possible CLI executables in same directory
-            cli_options = [
-                "RT11Extract.exe",            # Main CLI
-                "rt11extract_universal.exe",  # Universal extractor
-                "rt11extract_cli.exe"        # Alternative name
-            ]
+            if sys.platform.startswith('win'):
+                # Windows: Try all possible CLI executables in same directory
+                exe_dir = Path(sys.executable).parent
+                cli_options = [
+                    "RT11Extract.exe",            # Main CLI
+                    "rt11extract_universal.exe",  # Universal extractor
+                    "rt11extract_cli.exe"        # Alternative name
+                ]
+                
+                for cli in cli_options:
+                    cli_path = exe_dir / cli
+                    if cli_path.exists():
+                        return cli_path
             
-            for cli in cli_options:
-                cli_path = exe_dir / cli
-                if cli_path.exists():
-                    return cli_path
+        # Add Windows executables extension if missing
+        if sys.platform.startswith('win'):
+            if not rt11extract_path.suffix:
+                rt11extract_path = rt11extract_path.with_suffix('.exe')
+        
                     
         elif sys.platform == 'darwin':
             # macOS: CLI debe estar en Contents/cli/ del bundle
