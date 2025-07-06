@@ -1,1 +1,0 @@
-backend/filesystem_mount/setup_winfsp.bat
