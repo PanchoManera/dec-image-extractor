@@ -169,7 +169,7 @@ jobs:
           Write-Warning "  -> ✗ universal_extractor.py NOT found in temp_backend\extractors"
         }
         
-        # Build with the cleaned backend
+        # Build GUI with the cleaned backend (SEPARATE NAME to avoid conflict)
         if (Test-Path "icon.png") {
           pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --paths="temp_backend" --paths="gui/desktop" --paths="." --add-data "temp_backend;backend" --add-data "icon.png;." --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" gui/desktop/rt11extract_gui.py
         } else {
