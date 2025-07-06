@@ -1,10 +1,15 @@
-# RT-11 Extractor
+# DEC Systems Disk Image Extractor
 
-Complete toolkit for extracting files from RT-11 disk images and other historical filesystem formats with modern GUI and command-line interfaces.
+Complete toolkit for extracting files from historical DEC operating system disk images including RT-11, RSX-11, Unix V5/V6, and other vintage filesystem formats. Features modern GUI and command-line interfaces. PDP-8 OS/8 support is currently in development.
 
-## 🖥️ **What is RT-11?**
+## 🖥️ **What are DEC Systems?**
 
-RT-11 was a real-time operating system developed by Digital Equipment Corporation (DEC) for the PDP-11 family of computers. This tool helps extract files from RT-11 disk images and other historical formats.
+Digital Equipment Corporation (DEC) created influential operating systems for the PDP series of computers. This toolkit helps extract and analyze files from various DEC system disk images:
+- **RT-11** - Real-time operating system for PDP-11
+- **RSX-11** - Multi-user operating system (ODS-1 filesystem)
+- **Unix V5/V6** - Early Unix implementations on PDP-11
+- **PDP-8 OS/8** - Operating system for PDP-8 computers (in development)
+- **Unix PDP-11** - Unix variants on PDP-11 systems
 
 ## 📦 **Project Components**
 
