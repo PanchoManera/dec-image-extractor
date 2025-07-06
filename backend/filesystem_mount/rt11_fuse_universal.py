@@ -88,13 +88,21 @@ class UniversalExtractorWrapper:
         possible_paths = [
             script_dir / "rt11extract",           # Extractor universal
             script_dir / "rt11extract_cli",       # CLI standalone
-            script_dir / "pdp11_smart_extractor.py",  # Extractor inteligente
+            script_dir / "pdp11_smart_extractor.py",  # Extractor inteligente (Unix symlink)
+            script_dir / "pdp11_smart_extractor_windows.py",  # Windows-compatible wrapper
         ]
         
         for path in possible_paths:
             if path.exists():
                 self.logger.info(f"Found extractor at: {path}")
                 return path
+        
+        # Si pdp11_smart_extractor.py no existe (problema con enlaces simbólicos en Windows),
+        # intentar encontrar universal_extractor.py directamente
+        universal_extractor_path = script_dir.parent / "extractors" / "universal_extractor.py"
+        if universal_extractor_path.exists():
+            self.logger.info(f"Found universal extractor at: {universal_extractor_path}")
+            return universal_extractor_path
         
         # Buscar en PATH como último recurso
         import shutil
@@ -104,7 +112,7 @@ class UniversalExtractorWrapper:
             self.logger.info(f"Found extractor in PATH: {path}")
             return path
         
-        raise Exception(f"No extractor found. Tried: {[str(p) for p in possible_paths]}")
+        raise Exception(f"No extractor found. Tried: {[str(p) for p in possible_paths]} and {universal_extractor_path}")
     
     def _detect_filesystem_type(self):
         """Detectar el tipo de filesystem (RT-11 o Unix)"""

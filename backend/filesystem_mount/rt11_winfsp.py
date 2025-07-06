@@ -112,6 +112,9 @@ class RT11ExtractorWrapper:
             script_dir / "RT11Extract.exe",
             script_dir / "rt11extract.exe", 
             script_dir / "rt11extract",
+            script_dir / "pdp11_smart_extractor.py",
+            script_dir / "pdp11_smart_extractor_windows.py",
+            script_dir.parent / "extractors" / "universal_extractor.py",
             cwd / "RT11Extract.exe",
             cwd / "rt11extract.exe",
             cwd / "rt11extract",
@@ -121,9 +124,13 @@ class RT11ExtractorWrapper:
         ]
         
         self.rt11extract_path = None
+        self.is_python_script = False
         for path in search_paths:
             if path.exists():
                 self.rt11extract_path = path
+                # Check if it's a Python script
+                if path.suffix == '.py':
+                    self.is_python_script = True
                 break
         
         self.logger = logging.getLogger('RT11-Extractor')
@@ -141,7 +148,10 @@ class RT11ExtractorWrapper:
                 temp_path = Path(temp_dir)
                 
                 # Run RT11Extract to extract all files
-                cmd = [str(self.rt11extract_path), str(self.image_path), "-o", str(temp_path)]
+                if self.is_python_script:
+                    cmd = ["python", str(self.rt11extract_path), str(self.image_path), "-o", str(temp_path)]
+                else:
+                    cmd = [str(self.rt11extract_path), str(self.image_path), "-o", str(temp_path)]
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=60, 
                                       creationflags=subprocess.CREATE_NO_WINDOW)
                 
@@ -190,7 +200,10 @@ class RT11ExtractorWrapper:
                 temp_path = Path(temp_dir)
                 
                 # Extract all files (RT11Extract doesn't support single file extraction easily)
-                cmd = [str(self.rt11extract_path), str(self.image_path), "-o", str(temp_path)]
+                if self.is_python_script:
+                    cmd = ["python", str(self.rt11extract_path), str(self.image_path), "-o", str(temp_path)]
+                else:
+                    cmd = [str(self.rt11extract_path), str(self.image_path), "-o", str(temp_path)]
                 result = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
                                       creationflags=subprocess.CREATE_NO_WINDOW)
                 

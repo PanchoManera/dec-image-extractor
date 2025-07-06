@@ -64,18 +64,29 @@ if !WINFSP_FOUND!==0 (
 
 echo ✓ WinFsp is installed
 
-REM Check if standalone executable exists
-if not exist "%WINFSP_EXE%" (
-    echo ERROR: RT-11 WinFsp driver not found: %WINFSP_EXE%
-    echo.
-    echo Expected file: rt11_winfsp.exe
-    echo In directory: %SCRIPT_DIR%
-    echo.
-    pause
-    exit /b 1
-)
+REM Check if standalone executable exists, fallback to Python script
+set PYTHON_WINFSP=%SCRIPT_DIR%rt11_winfsp.py
+set USE_PYTHON=0
 
-echo ✓ RT-11 WinFsp driver found: %WINFSP_EXE%
+if not exist "%WINFSP_EXE%" (
+    echo RT-11 WinFsp executable not found: %WINFSP_EXE%
+    echo Looking for Python script fallback...
+    
+    if exist "%PYTHON_WINFSP%" (
+        echo ✓ Found Python WinFsp driver: %PYTHON_WINFSP%
+        set USE_PYTHON=1
+    ) else (
+        echo ERROR: Neither executable nor Python script found
+        echo Expected files:
+        echo   %WINFSP_EXE%
+        echo   %PYTHON_WINFSP%
+        echo.
+        pause
+        exit /b 1
+    )
+) else (
+    echo ✓ RT-11 WinFsp driver found: %WINFSP_EXE%
+)
 
 REM Normalize mount point
 set NORM_MOUNT=%MOUNT_POINT%
@@ -94,11 +105,18 @@ echo.
 
 REM Execute the WinFsp driver
 echo Starting RT-11 filesystem mount...
-echo Command: "%WINFSP_EXE%" "%IMAGE_FILE%" "%NORM_MOUNT%"
-echo.
 
-"%WINFSP_EXE%" "%IMAGE_FILE%" "%NORM_MOUNT%"
-set MOUNT_RESULT=!ERRORLEVEL!
+if !USE_PYTHON!==1 (
+    echo Command: python "%PYTHON_WINFSP%" "%IMAGE_FILE%" "%NORM_MOUNT%"
+    echo.
+    python "%PYTHON_WINFSP%" "%IMAGE_FILE%" "%NORM_MOUNT%"
+    set MOUNT_RESULT=!ERRORLEVEL!
+) else (
+    echo Command: "%WINFSP_EXE%" "%IMAGE_FILE%" "%NORM_MOUNT%"
+    echo.
+    "%WINFSP_EXE%" "%IMAGE_FILE%" "%NORM_MOUNT%"
+    set MOUNT_RESULT=!ERRORLEVEL!
+)
 
 echo.
 if !MOUNT_RESULT!==0 (

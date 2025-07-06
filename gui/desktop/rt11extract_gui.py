@@ -482,9 +482,9 @@ class RT11ExtractGUI:
             # Import backend modules directly
             sys.path.insert(0, str(backend_path)) if backend_path else None
             
-            # Try to import and use the smart extractor directly
+            # Try to import and use the universal extractor directly
             try:
-                from extractors.pdp11_smart_extractor import UniversalExtractor
+                from extractors.universal_extractor import UniversalExtractor
                 extractor = UniversalExtractor(disk_file, str(scan_dir), verbose=True)
                 
                 # First get file list
