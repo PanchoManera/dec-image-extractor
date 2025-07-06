@@ -1,0 +1,1804 @@
+;                      COPYRIGHT (c) 1979, 1980 BY
+;             DIGITAL EQUIPMENT CORPORATION, MAYNARD, MASS.
+;
+; THIS SOFTWARE IS FURNISHED UNDER A LICENSE AND MAY BE USED AND  COPIED
+; ONLY  IN  ACCORDANCE  WITH  THE  TERMS  OF  SUCH  LICENSE AND WITH THE
+; INCLUSION OF THE ABOVE COPYRIGHT NOTICE.  THIS SOFTWARE OR  ANY  OTHER
+; COPIES  THEREOF MAY NOT BE PROVIDED OR OTHERWISE MADE AVAILABLE TO ANY
+; OTHER PERSON.  NO TITLE TO AND OWNERSHIP OF  THE  SOFTWARE  IS  HEREBY
+; TRANSFERRED.
+;
+; THE INFORMATION IN THIS SOFTWARE IS SUBJECT TO CHANGE  WITHOUT  NOTICE
+; AND  SHOULD  NOT  BE  CONSTRUED  AS  A COMMITMENT BY DIGITAL EQUIPMENT
+; CORPORATION.
+;
+; DIGITAL ASSUMES NO RESPONSIBILITY FOR THE USE OR  RELIABILITY  OF  ITS
+; SOFTWARE ON EQUIPMENT WHICH IS NOT SUPPLIED BY DIGITAL.
+.MACRO	APL
+APL		Invokes the APL language interpreter
+
+  SYNTAX
+	APL
+
+  SEMANTICS
+	See the APL-11 Programmer's Reference Manual
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	APL
+.ENDM
+.MACRO	ASSIGN
+ASSIGN		Associates a logical device name with a physical device
+
+  SYNTAX
+	ASSIGN physical-device-name logical-device-name
+
+  SEMANTICS
+	Physical-device-name is the RT-11 standard permanent name for
+	the device. Logical-device-name is one to three alphanumeric
+	characters long with no intervening spaces or tabs.
+	The physical name and logical name must be separated by a space.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	ASSIGN RK1: DK:
+	ASSIGN TT: LP:
+.ENDM
+.MACRO	B
+B		Sets a relocation base
+
+  SYNTAX
+	B[ address]
+
+  SEMANTICS
+	B address sets a base for subsequent Examine (E) and Deposit
+	(D) commands.  The system adds the current base to the value
+	you supply in an Examine or Deposit command.  If address is
+	missing, the base is set to zero.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	B		Sets base to 0
+	B 6704		Sets base to 6704 octal
+.ENDM
+.MACRO	BASIC
+BASIC		Invokes the BASIC language interpreter
+
+  SYNTAX
+	BASIC
+
+  SEMANTICS
+	See the BASIC-11 Language Reference Manual
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	BASIC
+.ENDM
+.MACRO	BOOT
+BOOT		Boots a new system
+
+  SYNTAX
+	BOOT filespec
+
+  SEMANTICS
+	BOOT dev: does a hardware bootstrap of the device you specify.
+	BOOT dev:monitor-file boots the monitor file you specify.
+	The default file type is SYS.
+  OPTIONS
+   FOREIGN
+	Boots a system volume that is not an RT-11 Version 4 volume;
+	use this option to boot a V3B or earlier system
+   WAIT
+	Waits for user response before proceeding with the bootstrap
+
+  EXAMPLES
+	BOOT RK1:
+	BOOT RK:RT11FB
+.ENDM
+.MACRO	CLOSE
+CLOSE		Makes background output files permanent
+
+  SYNTAX
+	CLOSE
+
+  SEMANTICS
+	CLOSE makes tenative background files permanent.  Use it after
+	unexpected program termination to preserve new files. It does
+	not affect the foreground job. You cannot use it on files
+	opened on magtape or cassette.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	R PROG
+	(Program running)
+	(CTRL/C)(CTRL/C)
+	CLOSE
+.ENDM
+.MACRO	COMPILE
+COMPILE		Translates source programs
+
+  SYNTAX
+	COMPILE[/options] filespecs[/options]
+
+  SEMANTICS
+	To compile multiple files (up to six) into a single OBJ file,
+	separate the files with plus (+) signs in the command line.
+	Multiple files separated by commas (,) are compiled
+	independently. You establish which compiler is invoked by
+	specifying the compiler as a command or file option, by
+	explicitly specifying the source file type, or by letting the
+	system search for the file type.
+	The default file types for output files are .LST for listing
+	files and .OBJ for binary files. Default file types for input
+	are .MAC for macro programs, .FOR for FORTRAN programs,
+	and .DBL for DIBOL programs.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   ALPHABETIZE		DIBOL
+	Alphabetizes the symbol table
+   CODE:type		FORTRAN
+	Specifies the type of machine code to generate
+   CROSSREFERENCE[:type[...:type]]	MACRO/DIBOL
+	Generates a cross-reference table in the listing file
+   DIAGNOSE		FORTRAN
+	Expands compiler crash dump information
+   DIBOL
+	Uses the DIBOL compiler to translate the source files
+   DISABLE:value[...:value]	MACRO
+	Specifies a .DSABL directive
+   ENABLE:value[...:value]	MACRO
+	Specifies an .ENABL directive
+   EXTEND		FORTRAN
+	Enables 80-column source input
+   FORTRAN
+	Uses the FORTRAN compiler to translate source programs
+   HEADER		FORTRAN
+	Includes the "options-in-effect" header in the listing file
+   I4			FORTRAN
+	Allocates 4 bytes for single-precision integers
+   LIBRARY		MACRO
+	Identifies a file as a macro library file
+   LINENUMBERS		DIBOL/FORTRAN	(default)
+	Includes internal sequence numbers in the compiled program
+   LIST[:filespec]
+	Produces a listing file
+   MACRO
+	Uses the MACRO assembler to translate source programs
+   NOLINENUMBERS	DIBOL/FORTRAN
+	Supresses internal sequence numbers in compiled programs
+   NOOBJECT
+	Supresses output of the binary object file
+   NOOPTIMIZE[:type]	FORTRAN
+	Disables a specific optimization
+   NOSHOW:value	MACRO
+	Specifies an .NLIST directive
+   NOSWAP		FORTRAN
+	Causes a compiled program to keep the USR resident while
+	running
+   NOVECTORS		FORTRAN
+	Specifies array access by multiplication operations
+   NOWARNINGS		DIBOL/FORTRAN
+	Supresses warning messages during compilation
+   OBJECT[:filespec]
+	Specifies a file name for the object file
+   ONDEBUG		DIBOL/FORTRAN
+	Compiles D lines in FORTRAN; includes a symbol table in DIBOL
+	binary output
+   OPTIMIZE[:type]	FORTRAN
+	Enables a specific optimization
+   PASS:1		MACRO
+	Specifies a file as a prefix macro or conditional file
+   RECORD:length	FORTAN
+	Alters the default record length for sequential ASCII
+	formatted I/O
+   SHOW:value		FORTRAN/MACRO
+	Specifies a .LIST directive to MACRO; controls FORTRAN listing
+	contents
+   STATISTICS		FORTRAN
+	Includes compilation statistics in the listing file
+   SWAP			FORTRAN	(default)
+	Causes a compiled program to swap the USR during execution
+   UNITS:n		FORTRAN
+	Specifies the number of logical units that can be open at once
+   VECTORS		FORTRAN	(default)
+	Specifies array access by tabular lookup
+   WARNINGS		DIBOL/FORTRAN
+	Includes warning messages in the listing file
+
+  EXAMPLES
+	COMPILE/LIST MYPROG.FOR
+	COMPILE/FORTRAN/LIST:FILE1.LST A+B
+	COMPILE A.MAC/LIST,B.FOR
+.ENDM
+.MACRO	COPY
+COPY		Copies files
+
+  SYNTAX
+	COPY[/options] input-filespecs[/options] output-filespec[/option]
+
+  SEMANTICS
+	The COPY command accepts up to six input file specifications
+	but only one output file specification. It accepts wildcards
+	in place of file names or file types.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   ASCII
+	Copies files in ASCII mode, ignoring nulls and rubouts
+   BINARY
+	Copies files in formatted binary mode
+   BOOT[:dd]
+	Copies bootstrap information from a monitor file to the boot
+	blocks of a random access device;  use the optional device name
+	if you are creating a volume to boot on a different device
+	(for example, using an RX02 to create a floppy bootable on an
+	RX01)
+   CONCATENATE
+	Combines several input files into a single output file
+   DEVICE
+	Copies the image of a device to another device, block for block
+   DOS
+	Specifies that a file is in RSTS/E or DOS-11 format
+   END:n
+	Specifies the last block of the device being read; must be used
+	with /DEVICE and /START:n
+   EXCLUDE
+	Copies all files on a device except the ones you specify
+   FILES
+	Copies a volume image to or from a file on another device;
+	must be used with /DEVICE
+   IGNORE
+	Ignores errors during a copy operation
+   IMAGE	(default)
+	Copies files byte for byte, regardless of their content
+   INTERCHANGE:n
+	Specifies that a diskette file is in interchange format; n is
+	the record length in characters
+   LOG
+	Lists on the terminal the names of the files copied
+   NEWFILES
+	Copies only those files dated with the current system date
+   NOLOG
+	Supresses the terminal log of copied files
+   NOQUERY
+	Does not require confirmation before copying each file
+   NOREPLACE
+	Does not perform the copy operation if a file with the same
+	name as the output file already exists on the output device
+   OWNER:[nnn,nnn]
+	Specifies the UIC for a file in DOS-11 format
+   PACKED
+	Specifies word-for-word transfers for PDP-11 files, EBCDIC
+	format for interchange diskette files, and packed image format
+	for PDP-10 files.
+   POSITION:n
+	Controls rewind when you copy files to or from magtape or
+	cassette
+   PREDELETE
+	Deletes any duplicate files on the output device before
+	performing the copy operation
+   QUERY
+	Requires user confirmation before copying each file
+   REPLACE	(default)
+	Deletes any duplicate files on the output device after the
+	copy completes
+   SETDATE
+	Puts the current system date on all files transferred
+   SLOWLY
+	Transfers files one block at a time
+   START:n
+	Specifies the starting block number of the non-file structured
+	volume being read or written; must be used with /DEVICE
+   SYSTEM
+	Copies .SYS files
+   TOPS
+	Specifies that the input file is on a DECsystem-10 formatted
+	dectape
+   VERIFY
+	Reads, writes, and then rereads and compares the input and output
+	transfers; valid only with the /DEVICE option
+   WAIT
+	Waits for user response before starting the copy operation;
+	must be used when the system volume is replaced with a data
+	volume
+
+  EXAMPLES
+	COPY A.FOR DX1:B.FOR
+	COPY/BOOT RK1:RT11SJ RK1:
+	COPY A.FOR+B.FOR C.FOR
+	COPY A%B.MAC DX0:*.MAC
+	COPY/ASCII MTA1.FOR DT1:TEST.FOR/ALLOCATE:50
+.ENDM
+.MACRO	CREATE
+CREATE		Creates or extends a file at a specific place
+
+  SYNTAX
+	CREATE[/options] filespec[/options]
+
+  SEMANTICS
+	Filespec in the device name, file name, and file type of the
+	file to create or extend
+
+  OPTIONS
+   ALLOCATE:size
+	Specifies the number of blocks to allocate to the created file;
+	must follow the filespec
+   EXTENSION:n
+	Extends the specified existing file by n blocks if possible
+   START:block
+	Specifies the starting block on the device of the created file
+
+  EXAMPLES
+	CREATE DX1:SWAP.SYS/START:6/ALLOCATE:25.
+	CREATE/EXTENSION:100 FILE.DAT
+.ENDM
+.MACRO	D
+D		Deposits values in memory
+
+  SYNTAX
+	D address=value[,...value]
+
+  SEMANTICS
+	The system deposits the octal values in memory, starting at the
+	specified address offset by the current base.  Each value
+	deposited replaces a full word.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	D 300=0
+	D 1000=5020,776
+.ENDM
+.MACRO	DATE
+DATE		Sets or displays the current system date
+
+  SYNTAX
+	DATE[ dd-mmm-yy]
+
+  SEMANTICS
+	All numeric values are decimal; mmm represents the first three
+	characters of the name of the month.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	DATE 12-MAR-80
+.ENDM
+.MACRO	DEASSIGN
+DEASSIGN	Removes logical device name assignments
+
+  SYNTAX
+	DEASSIGN[ logical-device-name]
+
+  SEMANTICS
+	The DEASSIGN command without an argument disassociates all
+	logical names from all physical devices.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	DEASSIGN INP:
+	DEASSIGN
+.ENDM
+.MACRO	DELETE
+DELETE		Removes files from a device or queue
+
+  SYNTAX
+	DELETE[/options] filespecs
+
+  SEMANTICS
+	This command deletes the files you specify from the device
+	or from the queue manager queue.
+	The DELETE command accepts wildcards in place of a file name
+	or file type.
+	CAUTION! "DELETE DT:A.MAC,B.FOR" deletes DT:A.MAC and DK:B.FOR,
+	not DT:B.FOR.
+
+  OPTIONS
+   DOS
+	Deletes files you specify from a DOS-11 or RSTS/E dectape
+   ENTRY
+	Deletes an entry from the queue (does not delete a file)
+   EXCLUDE
+	Deletes all files except the ones you specify
+   INTERCHANGE
+	Deletes a file from an interchange format diskette
+   LOG
+	Lists on the terminal the names of the files deleted
+   NEWFILES
+	Deletes only those files dated with the current system date
+   NOQUERY
+	Does not require confirmation before deleting files
+   POSITION:n
+	Directs cassette tape operations
+   QUERY	(default)
+	Requires confirmation before deleting each file
+   SYSTEM
+	Deletes .SYS files
+   WAIT
+	Waits for user response before proceeding with the delete
+
+  EXAMPLES
+	DELETE MYPROG.OBJ
+	DELETE/EXCLUDE DX0:*.SAV
+	DELETE/NEWFILES DX1:*.*
+.ENDM
+.MACRO	DIBOL
+DIBOL		Invokes the DIBOL language compiler
+
+  SYNTAX
+	DIBOL[/options] filespecs
+
+  SEMANTICS
+	Separate multiple source files by plus (+) signs in the command
+	line to compile them into a single OBJ file.  Multiple files
+	separated by commas (,) are compiled independently.
+	Deafult file types are .DBL for input, .LST for listing output,
+	and .OBJ for binary output.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   ALPHABETIZE
+	Alphabetizes the symbol table
+   CROSSREFERENCE
+	Generates a cross-reference table in the listing file
+   LINENUMBERS	(default)
+	Includes internal sequence numbers in the compiled program
+   LIST[:filespec]
+	Produces a listing file
+   NOLINENUMBERS
+	Supresses internal sequence numbers in compiled programs
+   NOOBJECT
+	Supresses output of the binary object file
+   NOWARNINGS
+	Supresses warning messages during compilation
+   OBJECT[:filespec]
+	Specifies a file name for the object file
+   ONDEBUG
+	Includes a symbol table in the binary output for debugging
+	purposes
+   WARNINGS	(default)
+	Includes warning messages in the listing file
+
+  EXAMPLES
+	DIBOL/LIST A
+	DIBOL A+B/LIST/OBJECT
+	DIBOL B/LIST,C/NOBJECT/LIST
+.ENDM
+.MACRO	DIFFERENCES
+DIFFERENCES	Compares two files and lists the differences
+
+  SYNTAX
+	DIFFERENCES[/options] filespec1,filespec2
+
+  SEMANTICS
+	Filespec1 and filespec2 are the files to be compared. The file
+	named in filespec1 shows up as file 1 in the differences
+	listing. The default file types are .MAC for input, and
+	.DIF for output.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   ALWAYS
+	Always produces an output file after a binary comparison, even
+	if there were no differences
+   AUDITTRAIL
+	Includes an audit trail in the output file; valid only with
+	the /SLP option
+   BINARY
+	Compares binary files
+   BLANKLINES
+	Includes blank lines in the comparison
+   BYTES
+	Does binary comparison byte by byte, rather than word by word
+   CHANGEBAR
+	Includes a changebar character on lines in the output file that
+	differ from the first input file
+   COMMENTS	(default)
+	Includes assembly language comments in the comparison
+   END:n
+	Specifies the ending block in the file for a binary comparison
+   FORMFEED
+	Includes formfeeds in the output listing
+   MATCH:n
+	Specifies the number of lines that must agree to constitute
+	a match
+   NOCOMMENTS
+	Excludes assembly language comments from the comparison
+   NOSPACES
+	Excludes spaces and tabs from the comparison
+   NOTRIM
+	Includes trailing spaces and tabs in the comparison
+   OUTPUT[:filespec]
+	Specifies the file name for the differences listing file
+   PRINTER
+	Prints the differences listing on the line printer
+   QUIET
+	Prints only a summary for a binary comparison
+   SIPP:filnam.typ
+	Specifies the name of the file to contain the SIPP commands
+	that would change the first input file to the second file
+	(binary comparison only)
+   SLP
+	Produces an output file suitable for input to SLP
+   SPACES	(default)
+	Includes spaces and tabs in the comparison
+   START:n
+	Specifies the starting block in the file for a binary comparison
+   TERMINAL	(default)
+	Types the differences listing on the terminal
+   TRIM		(default)
+	Excludes trailing spaces and tabs from the comparison
+
+  EXAMPLES
+	DIFFERENCES FILE1.TXT,FILE2.TXT
+	DIFFERENCES/MATCH:1/OUTPUT:DIFF.TXT FILE1.TXT,FILE2.TXT
+.ENDM
+.MACRO	DIRECTORY
+DIRECTORY	Lists device or file directories
+
+  SYNTAX
+	DIRECTORY[/options] [ filespecs[/BEGIN]]
+	The syntax for specifying a date is [:dd][:mmm][:yy].
+
+  SEMANTICS
+	This command generates a listing of the directory you specify.
+	The default is a directory of the device DK:.
+	Specify only one input device. You can use wildcards in a file
+	specification. The default file type for output is .DIR.
+
+  OPTIONS
+   ALLOCATE:size
+	Use with /OUTPUT to reserve space for the output listing file
+   ALPHABETIZE
+	Sorts the directory in alphabetical order by file name and type
+   BADBLOCKS
+	Scans the device for bad blocks and types their octal number
+   BEFORE[date]
+	Lists the files created before the date you specify
+   BEGIN
+	Lists the directory, starting with the file you specify
+   BLOCKS
+	Lists the starting block numbers of the files
+   BRIEF
+	Lists only file names and file types of files; same as /FAST
+   COLUMNS:n
+	Specifes the number of columns in the directory listing
+   DATE[date]
+	Lists the files created on the date you specify
+   DELETED
+	Lists a directory of file names that have been deleted
+   DOS
+	Lists the directory of a DOS-11 or RSTS/E volume
+   END
+	Specifies the ending block of the bad block scan; valid only
+	with the /BADBLOCKS option
+   EXCLUDE
+	Lists all files except those you specify
+   FAST
+	Lists only file names and file types of files; same as /BRIEF
+   FILES
+	Prints the name of each file in which a bad block is found;
+	valid only with the /BADBLOCKS option
+   FREE
+	Lists unused areas
+   FULL
+	Lists the entire directory, including unused areas
+   INTERCHANGE
+	Lists the directory of an interchange format diskette
+   NEWFILES
+	Lists only those files dated with the current system date
+   OCTAL
+	Lists file sizes and starting block numbers in octal
+   ORDER[:category]
+	Orders the directory listing according to the category
+	you specify; same as /SORT. Categories are:
+		NAME- orders alphabetically by file name
+		TYPE- orders alphabetically by file type
+		SIZE- orders by file size
+		DATE- orders by creation date
+		POSITION- orders by file position on the device
+   OUTPUT:filespec
+	Outputs the directory listing to the file you specify
+   OWNER:[nnn,nnn]
+	Specifies the UIC of the directory to be listed; valid only
+	with the /DOS option
+   POSITION
+	Lists the file sequence numbers of the files on a magtape
+   PRINTER
+	Prints the directory on the line printer
+   REVERSE
+	Reverses the order of any directory sort in effect
+   SINCE[date]
+	Lists files created on or after the date you specify
+   SORT[:category]
+	Orders the directory listing according to the category
+	you specify; same as /ORDER
+   START:n
+	Specifies the starting block number of the bad block scan;
+	valid only with the /BADBLOCKS option
+   SUMMARY
+	Lists the segment structure of the directory you specify
+   TERMINAL	(default)
+	Lists the directory on the terminal
+   TOPS
+	Lists the directory of a DECsystem-10 formatted	DECtape
+   VERIFY
+	Reads, rewrites, and then rereads all bad blocks; valid only
+	with the /BADBLOCKS option
+   VOLUMEID[:ONLY]
+	Prints the disk or magtape volume ID and owner name; if :ONLY
+	is not present, also lists the directory
+   WAIT
+	Waits for user response before starting the operation;
+	valid only with the /BADBLOCKS option; must be used when
+	the system volume is replaced with a data volume
+
+  EXAMPLES
+	DIRECTORY
+	DIRECTORY/BADBLOCKS RK1:
+	DIRECTORY MYPROG.MAC
+	DIRECTORY/FULL/BEFORE:12:APR:77 DK:
+	DIRECTORY/EXCLUDE DX0:(*.SAV,*.SYS)
+.ENDM
+.MACRO	DUMP
+DUMP		Prints formatted data dumps of files or devices
+
+  SYNTAX
+	DUMP[/options] filespec
+
+  SEMANTICS
+	Filespec represents the device or file to be dumped.
+	The default file type for output files is .DMP.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   ASCII	(default)
+	Prints the ASCII equivalent of each word or byte dumped
+   BYTES
+	Displays the dumped information as octal bytes
+   END:block
+	Specifies the last block to be dumped
+   FOREIGN
+	Indicates that a magtape does not contain an RT-11 file
+	structure
+   IGNORE
+	Dumps a file that contains a disk error
+   NOASCII
+	Supresses output of ASCII equivalents of the data dumped
+   ONLY:block
+	Dumps only the block you specify
+   OUTPUT:filespec
+	Outputs the dump listing to the file you specify
+   PRINTER	(default)
+	Outputs the dump listing to the line printer
+   RAD50
+	Prints the RAD50 equivalent of each word dumped
+   START:block
+	Specifies the first block to be dumped
+   TERMINAL
+	Types the dump listing on the terminal
+   WORDS	(default)
+	Displays the dump information as octal words
+
+  EXAMPLES
+	DUMP A.OBJ
+	DUMP/OUTPUT:MACLIB/BYTES/ONLY:1 SYSMAC.MAC
+	DUMP/NOASCII/RAD50/ONLY:6 RK0:
+.ENDM
+.MACRO	E
+E		Prints the contents of memory on the terminal
+
+  SYNTAX
+	E address[-address]
+
+  SEMANTICS
+	Prints in octal the values of the words in the specified
+	address range, offset by the current base.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	E 1000
+	E 2000-2076
+.ENDM
+.MACRO	EDIT
+EDIT		Invokes the text editor
+
+  SYNTAX
+	EDIT[options] filespec[/ALLOCATE:size]
+
+  SEMANTICS
+	If you do not specify an option, an Edit Backup for the
+	file you specify is assumed.
+	/CREATE performs an Edit Write for the file.
+	/INSPECT performs an Edit Read for the file.
+	EDIT/OUTPUT:B A is equivalent to an Edit Read on file A
+	and an Edit Write for file B.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   CREATE
+	Creates a new file with the name you specify
+   EXECUTE:filespec
+	Executes the TECO commands contained in the file;
+	use with /TECO
+   INSPECT
+	Opens the file you specify for reading only
+   KED
+	Invokes the KED editor
+   K52
+	Invokes the VT52 version of the KED editor
+   OUTPUT:filename
+	Opens the file you specify for output of the edited text
+   TECO
+	Invokes the TECO editor
+
+  EXAMPLES
+	EDIT FILE
+	EDIT/CREATE FILE.NEW
+	EDIT/INSPECT FILE.OLD
+	EDIT/OUTPUT:A B
+	EDIT FILE/ALLOCATE:150
+.ENDM
+.MACRO	EXECUTE
+EXECUTE		Translates, links, and runs a program with one command
+
+  SYNTAX
+	EXECUTE[/options] filespecs[/options]
+
+  SEMANTICS
+	To compile multiple files (up to six) into a single OBJ file,
+	separate the files with plus (+) signs in the command line.
+	Multiple files separated by commas (,) are compiled
+	independently. You establish which compiler is invoked by
+	specifying the compiler as a command or file option, by
+	explicitly specifying the source file type, or by letting the
+	system search for the file type.
+	The default file types for output are .LST for listing
+	files, .MAP for load map files, .OBJ for binary output
+	files, and .SAV for memory image files. Default file types
+	for input are .MAC for macro programs, .FOR for FORTRAN
+	programs, and .DBL for DIBOL programs.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   ALPHABETIZE		DIBOL
+	Alphabetizes the symbol table
+   BOTTOM:n
+	Specifies the lowest address to be used in the linked program
+   CODE:type		FORTRAN
+	Specifies the type of machine code to generate
+   CROSSREFERENCE[:type[...:type]]	MACRO/DIBOL
+	Generates a cross-reference table in the listing file
+   DEBUG[:filespec]
+	Links ODT (or the specified file) with the program as a
+	debugging aid
+   DIAGNOSE		FORTRAN
+	Expands compiler crash dump information
+   DIBOL
+	Uses the DIBOL compiler to translate the source files
+   DISABLE:value[...:value]	MACRO
+	Specifies a .DSABL directive
+   ENABLE:value[...:value]	MACRO
+	Specifies an .ENABL directive
+   EXECUTE[:filespec]
+	Specifies the name of the memory image file
+   EXTEND		FORTRAN
+	Enables 80-column source input
+   FORTRAN
+	Uses the FORTRAN compiler to translate source programs
+   HEADER		FORTRAN
+	Includes the "options-in-effect" header in the listing file
+   I4			FORTRAN
+	Allocates 4 bytes for single-precision integers
+   LIBRARY		MACRO
+	Identifies a file as a macro library file
+   LINENUMBERS		DIBOL/FORTRAN	(default)
+	Includes internal sequence numbers in the compiled program
+   LIST[:filespec]
+	Produces a listing file
+   MACRO
+	Uses the macro assembler to translate source programs
+   MAP[:filespec]
+	Produces a load map
+   NOLINENUMBERS	DIBOL/FORTRAN
+	Supresses internal sequence numbers in compiled programs
+   NOOPTIMIZE[:type]	FORTRAN
+	Disables a specific optimization
+   NORUN
+	Prevents program execution after the link operation completes
+   NOSHOW:value	MACRO
+	Specifies an .NLIST directive
+   NOSWAP		FORTRAN
+	Causes a compiled program to keep the USR resident
+	during execution
+   NOVECTORS		FORTRAN
+	Specifies array access by multiplication operations
+   NOWARNINGS		DIBOL/FORTRAN
+	Supresses warning messages during compilation
+   OBJECT[:filespec]
+	Specifies a file name for the object file
+   ONDEBUG		DIBOL/FORTRAN
+	Compiles D lines in FORTRAN; includes a symbol table in DIBOL
+	binary output
+   OPTIMIZE[:type]	FORTRAN
+	Enables a specific optimization
+   PASS:1		MACRO
+	Specifies a file as a prefix macro or conditional file
+   RECORD:length	FORTAN
+	Alters the default record length for sequential ASCII
+	formatted I/O
+   RUN		(default)
+	Starts the program after the link operation completes
+   SHOW:value		FORTRAN/MACRO
+	Specifies a .LIST directive to MACRO; controls FORTRAN listing
+	contents
+   STATISTICS		FORTRAN
+	Includes compilation statistics in the listing file
+   SWAP			FORTRAN	(default)
+	Causes a compiled program to swap the USR during execution
+   UNITS:n		FORTRAN
+	Specifies the number of logical units that can be open at once
+   VECTORS		FORTRAN	(default)
+	Specifies array access by tabular lookup
+   WARNINGS		DIBOL/FORTRAN
+	Includes warning messages in the listing file
+   WIDE
+	Produces a load map that is 132 columns wide
+
+  EXAMPLES
+	EXECUTE MYPROG.FOR
+	EXECUTE RTN1,RTN2,MYPROG/EXECUTE
+	EXECUTE A+B/LIST/OBJECT,MYLIB/LIBRARY+C.MAC/LIST/OBJECT
+	EXECUTE/NORUN/FORTRAN/LIST:FILE1 A+B
+.ENDM
+.MACRO	FORMAT
+FORMAT		Formats and/or verifies a volume
+
+  SYNTAX
+	FORMAT[/options] filespec
+
+  SEMANTICS
+	Filespec is the name and unit number of the device to be
+	formatted or checked.  No file name or type is allowed.
+
+  OPTIONS
+   NOQUERY
+	Does not require confirmation before starting the
+	initialization
+   PATTERN[:value]
+	Selects the patterns to use during pattern checking
+   QUERY	(default)
+	Requires confirmation before beginning the initialization
+   SINGLEDENSITY
+	Requests that an RX02 diskette be formatted as a single density
+	volume
+   VERIFY[:ONLY]
+	Does pattern checking on the volume after formatting it;
+	does not format if ONLY is included
+   WAIT
+	Waits for confirmation before proceeding with the operation
+
+  EXAMPLES
+	FORMAT RK0:/VERIFY/PATTERN:7
+	FORMAT DY0:/SINGLEDENSITY/WAIT
+.ENDM
+.MACRO	FORTRAN
+FORTRAN		Invokes the FORTRAN language compiler
+
+  SYNTAX
+	FORTRAN[/options] filespecs
+
+  SEMANTICS
+	To compile multiple files (up to six) into a single OBJ file,
+	separate the files with plus (+) signs in the command line.
+	Multiple files separated by commas (,) are compiled
+	independently.
+	The default file types for output are .LST for listing files
+	and .OBJ for binary output. The default input file type
+	is .FOR.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   CODE:type
+	Specifies the type of machine code to generate
+   DIAGNOSE
+	Expands compiler crash dump information
+   EXTEND
+	Enables 80-column source input
+   HEADER
+	Includes the "options-in-effect" header in the listing file
+   I4
+	Allocates 4 bytes for single-precision integers
+   LINENUMBERS	(default)
+	Includes internal sequence numbers in the compiled program
+   LIST[:filespec]
+	Produces a listing file
+   NOLINENUMBERS
+	Supresses internal sequence numbers in compiled programs
+   NOOBJECT
+	Supresses output of the binary object file
+   NOOPTIMIZE[:type]
+	Disables a specific optimization
+   NOSWAP
+	Causes a compiled program to keep the USR resident during
+	execution
+   NOVECTORS
+	Specifies array access by multiplication operations
+   NOWARNINGS
+	Supresses warning messages during compilation
+   OBJECT[:filespec]
+	Specifies a file name for the object file
+   ONDEBUG
+	Includes D lines in compilation
+   OPTIMIZE[:type]
+	Enables a specific optimization
+   RECORD:length
+	Alters the default record length for sequential ASCII
+	formatted I/O
+   SHOW:value
+	Controls the listing content
+   STATISTICS
+	Includes compilation statistics in the listing file
+   SWAP		(default)
+	Causes a compiled program to swap the USR during execution
+   UNITS:n
+	Specifies the number of logical units that can be open at once
+   VECTORS	(default)
+	Specifies array access by tabular lookup
+   WARNINGS
+	Includes warning messages in the listing file
+
+  EXAMPLES
+	FORTRAN/LIST MYPROG
+	FORTRAN/LIST:FILE2 A+B
+	FORTRAN A+B/LIST,C/NOOBJECT/LIST
+.ENDM
+.MACRO	FRUN
+FRUN		Loads and starts a foreground program
+
+  SYNTAX
+	FRUN filespec[/options]
+
+  SEMANTICS
+	Filespec is the name of the relocatable file to be run as the
+	foreground job. The default file type is .REL.
+
+  OPTIONS
+   BUFFER:n
+	Reserves n words in memory over and above normal program size
+   NAME:jobname
+	Assigns the specified logical job name to the job;  system job
+	monitors only
+   PAUSE
+	Prints the load address and waits rather than starting the job;
+	a RESUME command will start the job
+   TERMINAL:n
+	Assigns terminal unit n to interact with the foreground job;
+	multi-terminal monitors only
+
+  EXAMPLES
+	FRUN MYPROG
+	FRUN DEMOSP/PAUSE
+	FRUN DEMOFG/BUFFER:1300
+	FRUN PROG/TERMINAL:3
+.ENDM
+.MACRO	GET
+GET		Loads a memory image file into memory
+
+  SYNTAX
+	GET filespec
+
+  SEMANTICS
+	The memory image is loaded into the background memory area from
+	the file.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	GET MACRO
+.ENDM
+.MACRO	GT
+GT		Enables or disables the VT11 or VS60 display hardware
+
+  SYNTAX
+	GT command[/options]
+
+  SEMANTICS
+	If command is OFF, the display hardware is disabled and the
+	printing console becomes the command terminal.
+	If command is ON, the VT11 or VS60 display scope becomes the
+	console terminal.
+
+  OPTIONS
+   L:n
+	Sets the number of lines of text to display to n (decimal)
+   T:n
+	Sets the top of the scroll display to position n (decimal)
+
+  EXAMPLES
+	GT ON
+	GT ON/L:20/T:900
+	GT OFF
+.ENDM
+.MACRO	HELP
+HELP		Lists helpful information
+
+  SYNTAX
+	HELP[/options][ topic[ subtopic[:items...]...]]
+     or HELP *
+
+  SEMANTICS
+	HELP * lists the items for which help is available.
+	HELP lists the HELP text (of which this is a part).
+	HELP topic  lists information on the specific topic only.
+	HELP topic subtopic  lists information on the specific subtopic
+	  only (for example, HELP HELP SEMANTICS lists the paragraph of
+	  which this text is a part).
+	HELP topic subtopic:item  lists only the text associated with
+	  the specific item.
+	HELP topic/item lists the text associated with the specific item
+	  under the subtopic OPTIONS.
+	Valid topics are the keyboard monitor commands.
+	Subtopics are "SYNTAX", "SEMANTICS", "OPTIONS", and "EXAMPLES".
+	Items are specific command options.
+
+  OPTIONS
+   PRINTER
+	Prints the HELP text on the line printer
+   TERMINAL	(default)
+	Types the HELP text on the terminal
+
+  EXAMPLES
+	HELP COPY		!Lists information about COPY command
+	HELP/PRINTER EXECUTE	!Prints information about EXECUTE
+				!command
+	HELP PRINT OPTION:COPIES!Describes the COPIES option for PRINT
+	HELP COPY/BOOT/DEVICE	!Describes the listed options for COPY
+.ENDM
+.MACRO	INITIALIZE
+INITIALIZE	Initializes device directories
+
+  SYNTAX
+	INITIALIZE[/options] device
+
+  SEMANTICS
+	Specify only one device.  INITIALIZE initializes the device's
+	file directory and clears it of all files.
+	Any data on the device is lost.
+	A default directory size, which depends on the device,
+	is assigned to the device unless you specify otherwise.
+
+  OPTIONS
+   BADBLOCKS[:RETAIN]
+	Scans the disk for bad blocks and writes FILE.BAD files over
+	the bad blocks, retaining any old .BAD files if requested
+   DOS
+	Initializes the device you specify in DOS-11 format
+   FILE:filespec
+	Creates a bootable magtape by writing the file you specify in
+	the magtape boot block
+   INTERCHANGE
+	Initializes a diskette directory in interchange format
+   NOQUERY
+	Does not require confirmation before starting the
+	initialization
+   QUERY	(default)
+	Requires confirmation before beginning the initialization
+   REPLACE[:RETAIN]
+	Scans a volume for bad blocks and builds a replacement table;
+	if you specify RETAIN, the existing replacement table
+	is reused
+   RESTORE
+	Restores the directory of an initialized volume if that volume
+	has not been written on since it was initialized
+   SEGMENTS:n
+	Specifies the number of segments in the new directory
+   VOLUMEID[:ONLY]
+	Establishes a volume identification and owner name
+	as part of the initialization; ONLY specifies
+	that only the volume id is to change,not the owner
+   WAIT
+	Waits for user response before continuing the initialization
+
+  EXAMPLES
+	INITIALIZE RK1:
+	INITIALIZE/SEGMENTS:20 RK1:
+	INITIALIZE/BADBLOCKS RK:
+	INITIALIZE/FILE:MBOOT.BOT MT0:
+.ENDM
+.MACRO	INSTALL
+INSTALL		Adds a new device handler to the system
+
+  SYNTAX
+	INSTALL device[,...device]
+
+  SEMANTICS
+	Device is the two-character device name for the new handler; it
+	must match the name of the handler file (hh.SYS for SJ and FB,
+	hhX.SYS for XM).
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	INSTALL CR:
+	INSTALL LP:,CR:,DT:
+.ENDM
+.MACRO	LIBRARY
+LIBRARY		Creates and alters object and macro libraries
+
+  SYNTAX
+	LIBRARY[/options] library filespecs[/options]
+
+  SEMANTICS
+	Library is the name of the library file to be created or
+	modified. Filespecs are the input module file names, separated
+	by commas (,). The default file types for output files are .LST
+	for directory listings, .MAC for macro libraries, and .OBJ
+	for object libraries. The default input file types are .OBJ
+	for object modules and .MAC for macro libraries.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   CREATE
+	Creates an object library file
+   DELETE
+	Deletes an object module from a library
+   EXTRACT
+	Extracts an object module from a library and stores it
+	in an OBJ file
+   INSERT
+	Inserts an object module into an existing library
+   LIST[:filespec]
+	Lists the directory of an object library
+   MACRO
+	Creates a macro library
+   NOOBJECT
+	Supresses the creation of a new object library
+   OBJECT[:filespec]
+	Specifies the name of the updated library
+   PROMPT
+	Indicates that there is more than one line of input to the
+	librarian
+   REMOVE
+	Deletes a specific global symbol (and the entire module of
+	which it is a part) from the library directory
+   REPLACE
+	Replaces modules in an existing library with modules of the
+	same name
+   UPDATE
+	Combines /INSERT and /REPLACE functions
+
+  EXAMPLES
+	LIBRARY/CREATE NEWLIB FIRST,SECOND
+	LIBRARY/EXTRACT NEWLIB DX1:ATAN
+	LIBRARY/INSERT/OBJECT:NEWLIB OLDLIB THIRD,FOURTH
+	LIBRARY/LIST:TT: OLDLIB
+.ENDM
+.MACRO	LINK
+LINK		Produces an executable program
+
+  SYNTAX
+	LINK[/options] filespecs
+
+  SEMANTICS
+	Filespecs are the object files to be linked; separate them
+	with commas (,). Default file types are .OBJ for input files,
+	.MAP for map output files, and .SAV for memory image output
+	files.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   ALPHABETIZE
+	Lists global symbols on the link map in alphabetical order
+   BITMAP	(default)
+	Outputs the program bit map
+   BOTTOM:n
+	Specifies the lowest address to be used by the linked program
+   BOUNDARY:value
+	Starts a specific program section on a particular address
+	boundary
+   DEBUG[:filespec]
+	Links ODT or the debugging program you specify with your program
+   EXECUTE[:filespec]
+	Specifies the name of the memory image file
+   EXTEND:n
+	Extends a program section to the size you specify
+   FILL:n
+	Initializes unused locations in the memory image file to the
+	value you specify
+   FOREGROUND[:stacksize]
+	Links the program for foreground execution
+   INCLUDE
+	Accepts specific global symbols by name for inclusion in the
+	memory image file
+   LDA
+	Produces a file in absolute binary loader format
+   LINKLIBRARY[:filespec]
+	Includes the file you specify as a library in the link operation
+   MAP[:filespec]
+	Generates a load map
+   NOBITMAP
+	Does not output the program bit map if there is code below
+	location 400
+   NOEXECUTE
+	Supresses creation of the memory image file
+   PROMPT
+	Indicates that there is more than one line of input to the
+	linker
+   ROUND:n
+	Rounds up a specific program section so that the root
+	is a multiple of the value you specify
+   RUN
+	Initiates execution of the linked program
+   SLOWLY
+	Uses the largest possible area for the symbol table during
+	the link operation
+   STACK[:n]
+	Specifies the stack address for the linked program
+   SYMBOLTABLE[:filespec]
+	Generates a symbol table file
+   TOP:n
+	Specifies the highest address to be used by the linked program
+   TRANSFER[:n]
+	Specifies the starting address of the linked program
+   WIDE
+	Produces a load map that is 132 columns wide
+   XM
+	Specifies that a job to be run under the XM monitor requires the
+	special SETTOP features
+
+  EXAMPLES
+	LINK MYPROG
+	LINK RTN1,RTN2,MYPROG/EXECUTE
+	LINK/MAP:MAPFIL PROG1,PROG2
+.ENDM
+.MACRO	LOAD
+LOAD		Makes a device handler permanently resident in memory
+
+  SYNTAX
+	LOAD device[=jobtype][,....device[=jobtype]]
+
+  SEMANTICS
+	Device is the two-character permanent device name for the
+	handler to be made resident. Jobtypes are B for background
+	and F for foreground. If system job support is present,
+	jobtype may be any logical job name.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	LOAD RK:
+	LOAD DT:=B,MT:,LP:=F
+.ENDM
+.MACRO	MACRO
+MACRO		Invokes the macro assembler
+
+  SYNTAX
+	MACRO[/options] filespecs[/options]
+
+  SEMANTICS
+	To assemble multiple files (up to six) into a single OBJ file,
+	separate the files with plus (+) signs in the command line.
+	Multiple files separated by commas (,) are assembled
+	independently.
+	The default file types for output are .LST for listing files
+	and .OBJ for binary files. The default file type
+	for input is .MAC.
+
+  OPTIONS
+   ALLOCATE:size
+	Reserves space for an output file
+   CROSSREFERENCE[:type[...:type]]
+	Generates a cross-reference table in the listing file
+   DISABLE:value[...:value]
+	Specifies a .DSABL directive
+   ENABLE:value[...:value]
+	Specifies an .ENABL directive
+   LIBRARY
+	Identifies a file as a macro library file
+   LIST[:filespec]
+	Produces a listing file
+   NOOBJECT
+	Supresses output of the binary object file
+   NOSHOW:value
+	Specifies an .NLIST directive
+   OBJECT[:filespec]
+	Specifies a file name for the object file
+   PASS:1
+	Specifies a file as a prefix macro or conditional file
+   SHOW:value
+	Specifies a .LIST directive
+
+  EXAMPLES
+	MACRO/LIST MYPROG
+	MACRO/CROSSREFERENCE PROG1+PROG2/LIST/NOOBJECT
+	MACRO/LIST:FILE.OUT A+B
+	MACRO PREFIX.MAC/PASS:1+PROG1/LIST/OBJECT
+.ENDM
+.MACRO	PRINT
+PRINT		Prints files on the line printer
+
+  SYNTAX
+	PRINT[/options] filespecs
+
+  SEMANTICS
+	The PRINT command accepts up to six input file specifications;
+	separate multiple file specifications with commas (,).
+	Wildcards are accepted in place of file names or file types.
+	The default file type is .LST.
+	If the queue processor is running, files are automatically
+	queued to the line printer
+
+  OPTIONS
+   COPIES:n
+	Prints the number of copies you specify
+   DELETE
+	Deletes the file after printing it
+   FLAGPAGE:n
+	Includes a banner page before the file; valid only if QUEUE
+	is running
+   LOG
+	Lists on the terminal the files printed
+   NAME:dev:jobname
+	Associates a job name with the print queue entry and specifies
+	the device to queue to; valid only if QUEUE is running
+   NEWFILES
+	Prints only those files dated with the current system date
+   NOFLAGPAGE	(default)
+	Does not include a banner page before the file
+   NOLOG
+	Supresses the terminal log of files printed
+   PROMPT
+	Allows continuation lines; valid only if QUEUE is running
+   QUERY
+	Requires confirmation before printing each file
+   WAIT
+	Waits for user response before proceeding with the print
+
+  EXAMPLES
+	PRINT A.LST
+	PRINT/COPIES:3 REPORT
+	PRINT/DELETE FILE1
+	PRINT/FLAGPAGE:2 FILE2
+	PRINT/NEWFILES/QUERY *.LST
+.ENDM
+.MACRO	R
+R		Loads and executes a memory image file
+
+  SYNTAX
+	R filespec
+
+  SEMANTICS
+	The program to execute is loaded from the system device into
+	the background area and starts executing.  The only valid
+	device is SY:.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	R MACRO
+.ENDM
+.MACRO	REENTER
+REENTER		Starts a program at its reentry address
+
+  SYNTAX
+	REENTER
+
+  SEMANTICS
+	The program that is in memory in the background area is
+	restarted at its reentry address.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	REENTER
+.ENDM
+.MACRO	REMOVE
+REMOVE		Removes a device handler from the system
+
+  SYNTAX
+	REMOVE device[,...device]
+
+  SEMANTICS
+	Device is the two-character permanent device name for the
+	device to be removed from the system.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	REMOVE LP:
+	REMOVE CR:,DT:
+.ENDM
+.MACRO	RENAME
+RENAME		Changes the name of a file
+
+  SYNTAX
+	RENAME[/options] input-filespec output-filespec
+
+  SEMANTICS
+	The RENAME command accepts up to six input file specifications;
+	separate multiple file specifications with commas (,).
+	The command accepts only one output file specification.
+	Wildcards are accepted in place of file names or file types.
+	The device you specify (if any) must be the same for input
+	and output files.
+
+  OPTIONS
+   LOG
+	Lists the renamed files on the terminal
+   NEWFILES
+	Renames only those files dated with the current system date
+   NOLOG
+	Supresses the terminal log of renamed files
+   NOPROTECTION
+	Removes the protected status of files
+   NOREPLACE
+	Does not perform the rename operation if a file with the
+	new name already exists
+   PROTECTION
+	Sets files to be protected against deletion
+   QUERY
+	Requires confirmation before each rename operation begins
+   REPLACE	(default)
+	Deletes any previous files with the new name after the
+	operation completes
+   SETDATE
+	Sets the date on the new file name to the current system date
+   SYSTEM
+	Renames .SYS files
+   WAIT
+	Waits for user response before proceeding with the rename
+
+  EXAMPLES
+	RENAME A.FOR B.FOR
+	RENAME A%%.MAC *.FOR
+	RENAME/SYSTEM DX0:MM.SYS DX0:MX.SYS
+.ENDM
+.MACRO	RESET
+RESET		Causes a general system reset
+
+  SYNTAX
+	RESET
+
+  SEMANTICS
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	RESET
+.ENDM
+.MACRO	RESUME
+RESUME		Resumes execution of a foreground or system job
+
+  SYNTAX
+	RESUME [jobname]
+
+  SEMANTICS
+	Resumes execution of the foreground or system job after
+	a SUSPEND command or if an FRUN or SRUN command was used
+	with the /PAUSE option.  If system job support is present,
+	jobname is the logical name of the job to resume.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	RESUME
+.ENDM
+.MACRO	RUN
+RUN		Loads and starts a program
+
+  SYNTAX
+	RUN filespec[ input-list[ output-list]]
+     or RUN filespec[ argument]
+
+  SEMANTICS
+	Filespec is the name of the program to be started. The default
+	file type is .SAV. Any argument or input and output list
+	you include is passed to the program in CSI format.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	RUN MYPROG
+	RUN DX1:MYPROG
+	RUN DIR DX1:*.* LP:/E
+.ENDM
+.MACRO	SAVE
+SAVE		Writes memory areas to a file
+
+  SYNTAX
+	SAVE filespec[ parameters]
+
+  SEMANTICS
+	Filespec is the file in which background memory is to be saved.
+	Parameters are of the form  address[-address2][,...]  and
+	specify the areas of memory to be saved.  The default is to
+	save all the background program.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	SAVE TESTPG
+	SAVE TABLE 1000-17776
+.ENDM
+.MACRO	SET
+SET		Controls various system options
+
+  SYNTAX
+	SET physical-device-name condition
+     or SET item condition
+
+  SEMANTICS
+	Physical-device-name is the name of the device handler whose
+	characteristics are to be modified. Item is a system parameter
+	to be modified. Separate multiple conditions with commas (,).
+	See the RT-11 System User's Guide for a list of the handler
+	characteristics and system parameters that can be changed.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	SET LP: LC
+	SET WILD EXPLIC
+	SET ERROR SEVERE
+.ENDM
+.MACRO	SHOW
+SHOW		Displays system hardware and software status
+
+  SYNTAX
+	SHOW [options]
+
+  SEMANTICS
+	SHOW<CR> displays the device assignments; other information
+	is displayed by specifying one or more option names.
+
+  OPTIONS
+   ALL
+	Shows configuration, devices, jobs, and terminals
+   CONFIGURATION
+	Indicates the monitor version number,SET options,
+	hardware configuration,and SYSGEN options
+   DEVICES
+	Indicates the status and vectors of all device handlers on the
+	system
+   ERRORS[/options]
+	Produces on the terminal a report of all system and device
+	errors; valid only if error logging is present.  Options are:
+	    /ALL	(default)
+		Produces the report for all errors
+	    /FILE[:filnam.typ]
+		Specifies the name of the file containing the logged
+		errors; defaults to ERRLOG.DAT
+	    /FROM:[date]
+		Reports only errors that occurred after the date
+		specified
+	    /OUTPUT:filespec
+		Produces the report in the specified file
+	    /PRINTER
+		Produces the report on the line printer
+	    /SUMMARY
+		Produces a summary report
+	    /TERMINAL	(default)
+		Produces the report on the terminal
+	    /TO:[date]
+		Reports only errors that occurred before the date
+		specified
+   JOBS
+	Lists the names and status of all loaded jobs
+   QUEUE[/DEVICE:dev]
+	Lists the contents of the line printer (or specified device)
+	queue
+   TERMINALS
+	Indicates the status and SET options of all the terminals on the
+	system (if a multi-terminal monitor)
+
+  EXAMPLES
+	SHOW
+	SHOW CONFIGURATION
+	SHOW TERMINALS,CONFIGURATION,DEVICES
+.ENDM
+.MACRO	SQUEEZE
+SQUEEZE		Rearranges disk files to collect unused file space
+
+  SYNTAX
+	SQUEEZE[/options] device
+
+  SEMANTICS
+	Specify one input device. If you do not specify an output
+	device, the input device is compressed.
+	If you specify an output device, the input device is copied to
+	the output device in a compressed format and the input device
+	remains unchanged. If you specify an output device, make
+	sure it was previously initialized.
+
+  OPTIONS
+   NOQUERY
+	Does not require confirmation before the compression begins
+   OUTPUT:filespec
+	Compresses the input device to the output device you specify
+	rather than onto itself
+   QUERY	(default)
+	Requires confirmation before the compression begins
+   WAIT
+	Waits for user response before proceeding with the squeeze
+
+  EXAMPLES
+	SQUEEZE RK3:
+	SQUEEZE/OUTPUT:RK1: RK0:
+	SQUEEZE/NOQUERY DT1:
+.ENDM
+.MACRO	SRUN
+SRUN		Loads and starts a system job
+
+  SYNTAX
+	SRUN filespec[/options]
+
+  SEMANTICS
+	Filespec is the name of the relocatable file to be run as the
+	system job. The default file type is .SYS.
+
+  OPTIONS
+   BUFFER:n
+	Reserves n words in memory over and above normal program size
+   LEVEL:n
+	Assigns priority n to the job; n is a number from 1 to 6
+   NAME:jobname
+	Assigns the specified logical job name to the system job
+   PAUSE
+	Prints the load address and waits rather than starting the job;
+	a RESUME command will start the job
+   TERMINAL:n
+	Assigns terminal unit n to interact with the foreground job;
+	multi-terminal monitors only
+
+  EXAMPLES
+	SRUN EL/LEVEL:4/TERM:1
+	SRUN F4JOB.REL/BUFF:1000
+.ENDM
+.MACRO	START
+START		Initiates the program in memory
+
+  SYNTAX
+	START[ address]
+
+  SEMANTICS
+	Address is an even octal number that specifies an address in
+	the background job.  The program in memory is started at that
+	address.  The default is to use the program's start address.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	START
+	START 7002
+.ENDM
+.MACRO	SUSPEND
+SUSPEND		Stops execution of the foreground or system job
+
+  SYNTAX
+	SUSPEND [jobname]
+
+  SEMANTICS
+	Suspends execution of the foreground job until a RESUME
+	command is given.  If system job support is present, the
+	jobname is the logical name of the job to suspend.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	SUSPEND
+.ENDM
+.MACRO	TIME
+TIME		Sets or displays the system time
+
+  SYNTAX
+	TIME[ hh:mm:ss]
+
+  SEMANTICS
+	In the TIME command, hh represents the hour (0-23), mm
+	represents the minute (0-59), and ss represents the
+	second (0-59). The system assumes 00 for an omitted field.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	TIME 11:15
+.ENDM
+.MACRO	TYPE
+TYPE		Outputs files to the terminal
+
+  SYNTAX
+	TYPE[/options] filespecs
+
+  SEMANTICS
+	The TYPE command accepts up to six input file specifications;
+	separate multiple file specifications with commas (,).
+	Wildcards are accepted in place	of file names or file types.
+	The default file type is .LST.
+
+  OPTIONS
+   COPIES:n
+	Types the file the number of times you specify
+   DELETE
+	Deletes the file after typing it
+   LOG
+	Logs the names of the files typed
+   NEWFILES
+	Types only those files dated with the current system date
+   NOLOG
+	Supresses the log of the files typed
+   QUERY
+	Requires confirmation before typing each file
+   WAIT
+	Waits for user response before proceeding with the type
+
+  EXAMPLES
+	TYPE A.LST
+	TYPE/COPIES:3 REPORT
+	TYPE/NEWFILES *.LST
+.ENDM
+.MACRO	UNLOAD
+UNLOAD		Removes a resident device handler from memory
+
+  SYNTAX
+	UNLOAD device[,...device]
+
+  SEMANTICS
+	Device is the physical device name of the device handler to
+	be removed from memory.  UNLOAD F removes a foreground program
+	that is not running.  UNLOAD jobname unloads a system job,
+	if system job support is present.
+
+  OPTIONS
+	None
+
+  EXAMPLES
+	UNLOAD RK:
+	UNLOAD LP:,DT:
+	UNLOAD F
+	UNLOAD QUEUE
+.ENDM
+.MACRO	.99999
+.ENDM
+                                                                                                                        
