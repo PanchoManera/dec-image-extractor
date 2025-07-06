@@ -63,6 +63,17 @@ except ImportError:
 # Setup backend path for imports
 backend_path = setup_backend_path()
 
+# Windows-specific setup to ensure files exist without symlinks
+if sys.platform == "win32" and backend_path:
+    try:
+        windows_setup_script = backend_path / "filesystem_mount" / "windows_setup.py"
+        if windows_setup_script.exists():
+            import subprocess
+            subprocess.run([sys.executable, str(windows_setup_script)], 
+                         capture_output=True, text=True, timeout=10)
+    except Exception:
+        pass  # Fail silently if setup can't run
+
 # Try to import backend modules
 try:
     from image_converters.imd2raw import IMDConverter, DiskImageValidator
@@ -553,14 +564,16 @@ class RT11ExtractGUI:
         self.log("Using CLI fallback method")
         
         # Build command - but ensure we don't open GUI
-        if getattr(sys, 'frozen', False) and rt11extract_path and rt11extract_path.exists():
-            # Running as bundled executable - use external CLI if available
-            cmd = [str(rt11extract_path), disk_file, '-o', str(scan_dir), '-v']
+        # When frozen, NEVER use external CLI as it might open another GUI
+        # Always use the backend script directly
+        backend_script = backend_path / 'extractors' / 'rt11extract' if backend_path else None
+        if backend_script and backend_script.exists():
+            cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
         else:
-            # Running as script or no external CLI - use backend script directly
-            backend_script = backend_path / 'extractors' / 'rt11extract' if backend_path else None
-            if backend_script and backend_script.exists():
-                cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
+            # Last resort: try to find universal extractor
+            universal_script = backend_path / 'extractors' / 'universal_extractor.py' if backend_path else None
+            if universal_script and universal_script.exists():
+                cmd = [sys.executable, str(universal_script), disk_file, '-o', str(scan_dir), '-v']
             else:
                 raise FileNotFoundError("No extractor available")
         
