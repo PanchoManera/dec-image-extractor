@@ -577,7 +577,23 @@ class RT11ExtractGUI:
         self.log(f"DEBUG SCAN CLI: backend_script exists = {backend_script.exists() if backend_script else False}")
         
         if backend_script and backend_script.exists():
-            cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
+            # CRITICAL FIX: When frozen, sys.executable points to GUI executable, not Python!
+            # We need to use python3 directly to avoid opening another GUI
+            if getattr(sys, 'frozen', False):
+                # When packaged, use system python instead of GUI executable
+                python_cmd = 'python3'
+                # Verify python3 is available
+                import shutil
+                if not shutil.which('python3'):
+                    # Fallback to 'python'
+                    python_cmd = 'python' if shutil.which('python') else sys.executable
+                    self.log(f"DEBUG SCAN CLI: python3 not found, using fallback: {python_cmd}")
+                else:
+                    self.log(f"DEBUG SCAN CLI: Using system python3")
+                cmd = [python_cmd, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
+            else:
+                # When running as script, sys.executable is correct
+                cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
             self.log(f"DEBUG SCAN CLI: Using backend_script command")
         else:
             # Last resort: try to find universal extractor
@@ -585,7 +601,15 @@ class RT11ExtractGUI:
             self.log(f"DEBUG SCAN CLI: universal_script path = {universal_script}")
             self.log(f"DEBUG SCAN CLI: universal_script exists = {universal_script.exists() if universal_script else False}")
             if universal_script and universal_script.exists():
-                cmd = [sys.executable, str(universal_script), disk_file, '-o', str(scan_dir), '-v']
+                # Same fix for universal extractor
+                if getattr(sys, 'frozen', False):
+                    python_cmd = 'python3'
+                    import shutil
+                    if not shutil.which('python3'):
+                        python_cmd = 'python' if shutil.which('python') else sys.executable
+                    cmd = [python_cmd, str(universal_script), disk_file, '-o', str(scan_dir), '-v']
+                else:
+                    cmd = [sys.executable, str(universal_script), disk_file, '-o', str(scan_dir), '-v']
                 self.log(f"DEBUG SCAN CLI: Using universal_script command")
             else:
                 self.log(f"DEBUG SCAN CLI: No extractor found!")
