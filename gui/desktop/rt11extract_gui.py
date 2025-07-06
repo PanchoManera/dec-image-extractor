@@ -602,19 +602,87 @@ class RT11ExtractGUI:
         self.log(f"DEBUG SCAN CLI: backend_script exists = {backend_script.exists() if backend_script else False}")
         
         if backend_script and backend_script.exists():
-            # CRITICAL FIX: Use RT11Extract.exe CLI instead of python3 when frozen
+            # CRITICAL FIX: NEVER use sys.executable when frozen as it opens another GUI!
             if getattr(sys, 'frozen', False):
-                # CRITICAL: Platform-specific CLI handling
+                # When bundled, we MUST use the embedded Python runtime, not the GUI executable
+                self.log(f"DEBUG SCAN CLI: In frozen mode - using embedded Python runtime")
+                
+                # Find the embedded Python executable inside the bundle
                 if sys.platform.startswith('win'):
-                    # Windows: Use backend script directly like macOS (more reliable)
-                    self.log(f"DEBUG SCAN CLI: Using backend script with python in Windows bundle")
-                    cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
+                    # Windows: PyInstaller embeds python.exe inside the bundle temp directory
+                    # Use the embedded Python from sys._MEIPASS or import subprocess to run backend directly
+                    self.log(f"DEBUG SCAN CLI: Windows bundle - running backend script directly in Python")
+                    
+                    # Import and run the backend module directly instead of subprocess
+                    try:
+                        import importlib.util
+                        spec = importlib.util.spec_from_file_location("rt11extract", backend_script)
+                        rt11extract_module = importlib.util.module_from_spec(spec)
+                        
+                        # Prepare arguments for the module
+                        original_argv = sys.argv.copy()
+                        sys.argv = ['rt11extract', disk_file, '-o', str(scan_dir), '-v']
+                        
+                        try:
+                            spec.loader.exec_module(rt11extract_module)
+                            self.log(f"DEBUG SCAN CLI: Backend module executed successfully")
+                            return  # Success - don't use subprocess
+                        except SystemExit:
+                            # Expected - backend scripts often call sys.exit()
+                            self.log(f"DEBUG SCAN CLI: Backend script completed with SystemExit")
+                            return
+                        finally:
+                            sys.argv = original_argv
+                            
+                    except Exception as e:
+                        self.log(f"DEBUG SCAN CLI: Failed to run backend directly: {e}")
+                        # Fall back to subprocess with embedded CLI if available
+                        cli_path = get_rt11extract_cli_path()
+                        if cli_path and cli_path.exists():
+                            self.log(f"DEBUG SCAN CLI: Using embedded CLI: {cli_path}")
+                            cmd = [str(cli_path), disk_file, '-o', str(scan_dir), '-v']
+                        else:
+                            self.log(f"DEBUG SCAN CLI: No embedded CLI found, cannot scan")
+                            self.root.after(0, lambda: self._scan_error("No backend available in bundle"))
+                            return
+                        
                 elif sys.platform == 'darwin':
-                    # macOS: Use backend script directly with python
-                    self.log(f"DEBUG SCAN CLI: Using backend script with python in macOS bundle")
-                    cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
+                    # macOS: Similar approach - run backend directly or use embedded CLI
+                    self.log(f"DEBUG SCAN CLI: macOS bundle - running backend script directly in Python")
+                    
+                    try:
+                        import importlib.util
+                        spec = importlib.util.spec_from_file_location("rt11extract", backend_script)
+                        rt11extract_module = importlib.util.module_from_spec(spec)
+                        
+                        # Prepare arguments for the module
+                        original_argv = sys.argv.copy()
+                        sys.argv = ['rt11extract', disk_file, '-o', str(scan_dir), '-v']
+                        
+                        try:
+                            spec.loader.exec_module(rt11extract_module)
+                            self.log(f"DEBUG SCAN CLI: Backend module executed successfully")
+                            return  # Success - don't use subprocess
+                        except SystemExit:
+                            # Expected - backend scripts often call sys.exit()
+                            self.log(f"DEBUG SCAN CLI: Backend script completed with SystemExit")
+                            return
+                        finally:
+                            sys.argv = original_argv
+                            
+                    except Exception as e:
+                        self.log(f"DEBUG SCAN CLI: Failed to run backend directly: {e}")
+                        # Fall back to embedded CLI if available
+                        cli_path = get_rt11extract_cli_path()
+                        if cli_path and cli_path.exists():
+                            self.log(f"DEBUG SCAN CLI: Using embedded CLI: {cli_path}")
+                            cmd = [str(cli_path), disk_file, '-o', str(scan_dir), '-v']
+                        else:
+                            self.log(f"DEBUG SCAN CLI: No embedded CLI found, cannot scan")
+                            self.root.after(0, lambda: self._scan_error("No backend available in bundle"))
+                            return
                 else:
-                    # Linux: Use CLI path from helper
+                    # Linux: Use embedded CLI if available
                     cli_path = get_rt11extract_cli_path()
                     if cli_path and cli_path.exists():
                         self.log(f"DEBUG SCAN CLI: Using CLI path: {cli_path}")
@@ -624,9 +692,9 @@ class RT11ExtractGUI:
                         self.root.after(0, lambda: self._scan_error("RT11Extract CLI not found in package"))
                         return
             else:
-                # When running as script, sys.executable is correct
+                # When running as script, sys.executable is correct Python
                 cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
-            self.log(f"DEBUG SCAN CLI: Using CLI executable command")
+            self.log(f"DEBUG SCAN CLI: Using subprocess command")
         else:
             # Last resort: try to find universal extractor
             universal_script = backend_path / 'extractors' / 'universal_extractor.py' if backend_path else None
