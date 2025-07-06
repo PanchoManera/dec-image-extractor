@@ -1418,19 +1418,48 @@ Digital Equipment Corporation (DEC) computers."""
             # Use the universal FUSE script that supports both RT-11 and Unix
             fuse_script_name = "rt11_fuse_universal.py"
         
-        # Find FUSE script in appropriate location
-        if getattr(sys, 'frozen', False) and str(script_dir).endswith('.app/Contents/MacOS'):
-            # In macOS bundle, FUSE scripts are in Resources/
-            resources_dir = script_dir.parent / "Resources"
-            fuse_script = resources_dir / fuse_script_name
-        else:
-            # Not in bundle or not macOS, look in backend/filesystem_mount directory
-            fuse_script = script_dir / "backend" / "filesystem_mount" / fuse_script_name
+        # Find FUSE script using robust path detection (similar to scan fix)
+        fuse_script = None
+        
+        # Try multiple locations for FUSE script
+        possible_locations = []
+        
+        if backend_path:
+            # Primary location: backend/filesystem_mount
+            possible_locations.append(backend_path / "filesystem_mount" / fuse_script_name)
+        
+        if getattr(sys, 'frozen', False):
+            # When packaged, also try relative to executable
+            exe_dir = Path(sys.executable).parent
+            possible_locations.extend([
+                exe_dir / fuse_script_name,
+                exe_dir / "backend" / "filesystem_mount" / fuse_script_name,
+                exe_dir.parent / "Resources" / fuse_script_name,  # macOS bundle
+            ])
+        
+        # Also try relative to script directory
+        possible_locations.extend([
+            script_dir / fuse_script_name,
+            script_dir / "backend" / "filesystem_mount" / fuse_script_name,
+            script_dir.parent.parent / "backend" / "filesystem_mount" / fuse_script_name,
+        ])
+        
+        # Find the first existing script
+        for location in possible_locations:
+            if location.exists():
+                fuse_script = location
+                self.log(f"DEBUG MOUNT: Found FUSE script at: {fuse_script}")
+                break
+        
+        if not fuse_script:
+            self.log(f"DEBUG MOUNT: FUSE script not found. Tried locations:")
+            for i, loc in enumerate(possible_locations):
+                self.log(f"DEBUG MOUNT: [{i}] {loc} (exists: {loc.exists()})")
             
-        if not fuse_script.exists():
             messagebox.showerror("FUSE Driver Not Found", 
-                f"FUSE driver script not found: {fuse_script}\n\n" +
-                f"Please ensure {fuse_script_name} is in the same directory.")
+                f"FUSE driver script not found: {fuse_script_name}\n\n" +
+                f"Searched in multiple locations but could not find the script.\n" +
+                f"Please ensure the backend files are properly installed.")
             return
         
         # Create mount point - different approach for Windows vs Unix
