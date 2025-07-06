@@ -169,11 +169,11 @@ jobs:
           Write-Warning "  -> ✗ universal_extractor.py NOT found in temp_backend\extractors"
         }
         
-        # Build GUI with the cleaned backend (SEPARATE NAME to avoid conflict + TCL/TK fix)
+        # Build GUI with the cleaned backend (NO WINDOWED MODE to debug TCL issues)
         if (Test-Path "icon.png") {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --paths="temp_backend" --paths="gui/desktop" --paths="." --add-data "temp_backend;backend" --add-data "icon.png;." --collect-all tkinter --collect-all PIL --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" --hidden-import="tkinter" --hidden-import="tkinter.filedialog" --hidden-import="tkinter.messagebox" --hidden-import="tkinter.scrolledtext" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --paths="temp_backend" --paths="gui/desktop" --paths="." --add-data "temp_backend;backend" --add-data "icon.png;." --collect-all tkinter --collect-all PIL --copy-metadata tkinter --copy-metadata PIL --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" --hidden-import="tkinter" --hidden-import="tkinter.filedialog" --hidden-import="tkinter.messagebox" --hidden-import="tkinter.scrolledtext" --hidden-import="tkinter.ttk" --debug=all gui/desktop/rt11extract_gui.py
         } else {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="temp_backend" --paths="gui/desktop" --paths="." --add-data "temp_backend;backend" --collect-all tkinter --collect-all PIL --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" --hidden-import="tkinter" --hidden-import="tkinter.filedialog" --hidden-import="tkinter.messagebox" --hidden-import="tkinter.scrolledtext" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --name "RT11ExtractGUI" --paths="temp_backend" --paths="gui/desktop" --paths="." --add-data "temp_backend;backend" --collect-all tkinter --collect-all PIL --copy-metadata tkinter --copy-metadata PIL --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" --hidden-import="tkinter" --hidden-import="tkinter.filedialog" --hidden-import="tkinter.messagebox" --hidden-import="tkinter.scrolledtext" --hidden-import="tkinter.ttk" --debug=all gui/desktop/rt11extract_gui.py
         }
     
     - name: Create Windows package
