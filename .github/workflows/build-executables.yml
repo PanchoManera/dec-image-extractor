@@ -218,15 +218,8 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller pillow
         
-        # Install FUSE dependencies for macOS
-        echo "Installing macFUSE (OSXFUSE) for filesystem mounting..."
-        # Install macFUSE via Homebrew
-        brew install --cask macfuse || echo "macFUSE installation failed, will try without FUSE"
-        
-        # Install fusepy
-        pip install fusepy || echo "fusepy installation failed, will build GUI without FUSE"
-        
-        echo "✓ Dependencies installed"
+        # Skip FUSE for now to avoid build corruption
+        echo "✓ Dependencies installed (FUSE disabled for stability)"
     
     - name: Build macOS executables with complete backend
       run: |
@@ -260,36 +253,18 @@ jobs:
           cp imd2raw dist/
         }
         
-        # 3. Build GUI - with FUSE if available
+        # 3. Build GUI - simplified stable build
         echo "Building GUI..."
-        
-        # Check if FUSE is available
-        if python3 -c "import fuse; print('FUSE available')" 2>/dev/null; then
-          echo "Building macOS GUI WITH FUSE support..."
-          pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." \
-            --add-data "backend/extractors:backend/extractors" \
-            --add-data "backend/image_converters:backend/image_converters" \
-            --add-data "backend/filesystems:backend/filesystems" \
-            --add-data "backend/filesystem_mount:backend/filesystem_mount" \
-            --hidden-import="tkinter" --hidden-import="PIL" --hidden-import="fuse" --hidden-import="fusepy" \
-            gui/desktop/rt11extract_gui.py || {
-            echo "GUI build with FUSE failed, trying without FUSE..."
-            pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." \
-              --add-data "backend/extractors:backend/extractors" \
-              --add-data "backend/image_converters:backend/image_converters" \
-              --add-data "backend/filesystems:backend/filesystems" \
-              --hidden-import="tkinter" --hidden-import="PIL" \
-              gui/desktop/rt11extract_gui.py
-          }
-        else
-          echo "Building macOS GUI WITHOUT FUSE (not available)..."
-          pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." \
-            --add-data "backend/extractors:backend/extractors" \
-            --add-data "backend/image_converters:backend/image_converters" \
-            --add-data "backend/filesystems:backend/filesystems" \
-            --hidden-import="tkinter" --hidden-import="PIL" \
-            gui/desktop/rt11extract_gui.py
-        fi
+        echo "Building macOS GUI (stable build)..."
+        pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/image_converters:backend/image_converters" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="tkinter" --hidden-import="PIL" \
+          gui/desktop/rt11extract_gui.py || {
+          echo "GUI build failed, trying minimal build..."
+          pyinstaller --onefile --name "RT11Extract" --paths="gui/desktop" --paths="." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
+        }
         
         # Check what was built
         echo "Built files:"
