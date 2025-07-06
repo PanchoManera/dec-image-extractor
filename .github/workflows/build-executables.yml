@@ -221,6 +221,13 @@ jobs:
         # Verify fusepy installation
         python3 -c "import fusepy; print('✓ fusepy installed successfully')"
         python3 -c "from fuse import FUSE; print('✓ FUSE import successful')"
+        
+        # EXTREME FIX: Copy fusepy source directly into backend
+        echo "Copying fusepy source code directly..."
+        mkdir -p backend/fusepy_embedded
+        python3 -c "import fusepy; import os; print(os.path.dirname(fusepy.__file__))" | xargs -I {} cp -r {} backend/fusepy_embedded/
+        echo "✓ fusepy source copied to backend/fusepy_embedded/"
+        ls -la backend/fusepy_embedded/
     
     - name: Build macOS executables with complete backend
       run: |

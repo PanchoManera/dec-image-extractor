@@ -36,12 +36,31 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-# Importar FUSE
+# Importar FUSE - Try embedded version first, then system version
 try:
+    # First try to import from embedded fusepy
+    script_dir = Path(__file__).parent.parent
+    fusepy_embedded_path = script_dir / "fusepy_embedded"
+    if fusepy_embedded_path.exists():
+        import sys
+        sys.path.insert(0, str(fusepy_embedded_path))
+        print(f"DEBUG: Using embedded fusepy from {fusepy_embedded_path}")
+    
     from fuse import FUSE, FuseOSError, Operations, LoggingMixIn
-except ImportError:
-    print("Error: fusepy no está instalado.")
+    print("DEBUG: fusepy imported successfully")
+except ImportError as e:
+    print(f"Error: fusepy no está instalado. Details: {e}")
     print("Instálalo con: pip install fusepy")
+    
+    # Debug information about search paths
+    print(f"DEBUG: Python path: {sys.path[:5]}...")
+    script_dir = Path(__file__).parent.parent
+    fusepy_embedded_path = script_dir / "fusepy_embedded"
+    print(f"DEBUG: Looking for embedded fusepy at: {fusepy_embedded_path}")
+    print(f"DEBUG: Embedded path exists: {fusepy_embedded_path.exists()}")
+    if fusepy_embedded_path.exists():
+        print(f"DEBUG: Contents: {list(fusepy_embedded_path.iterdir()) if fusepy_embedded_path.is_dir() else 'Not a directory'}")
+    
     sys.exit(1)
 
 class FileEntry:
