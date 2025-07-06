@@ -117,52 +117,86 @@ jobs:
           cp imd2raw dist/
         }
         
-        # 3. Build GUI - try different approaches
+        # 3. Build GUI - simplified approach for macOS
         echo "Building GUI..."
+        # Create a more specific data inclusion to avoid directory issues
         if [ -f "icon.png" ]; then
-          pyinstaller --onedir --windowed --name "RT11Extract" --icon="icon.png" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "gui/desktop/pyinstaller_helper.py:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py || {
-            echo "GUI build with icon failed, trying without icon..."
-            pyinstaller --onedir --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "gui/desktop/pyinstaller_helper.py:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --windowed --name "RT11Extract" --icon="icon.png" --paths="gui/desktop" --paths="." --add-data "backend/extractors:backend/extractors" --add-data "backend/image_converters:backend/image_converters" --add-data "backend/filesystems:backend/filesystems" --add-data "gui/desktop/pyinstaller_helper.py:." --add-data "icon.png:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py || {
+            echo "GUI build with icon failed, trying minimal build..."
+            pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
           }
         else
-          pyinstaller --onedir --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "gui/desktop/pyinstaller_helper.py:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --add-data "backend/extractors:backend/extractors" --add-data "backend/image_converters:backend/image_converters" --add-data "backend/filesystems:backend/filesystems" --add-data "gui/desktop/pyinstaller_helper.py:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py || {
+            echo "GUI build failed, trying minimal build..."
+            pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
+          }
         fi
         
         # Check what was built
         echo "Built files:"
         ls -la dist/ || echo "No dist directory"
     
-    - name: Create macOS package with bundle
+    - name: Create macOS package
       run: |
         mkdir RT11Extractor-macOS-universal
-        # Copy the .app bundle (main GUI application)
-        cp -r "dist/RT11Extract.app" RT11Extractor-macOS-universal/
+        
+        # Check what was actually built and copy accordingly
+        echo "Checking built files:"
+        ls -la dist/
+        
         # Copy CLI tools for command line use
-        cp dist/rt11extract_cli RT11Extractor-macOS-universal/
-        cp dist/imd2raw RT11Extractor-macOS-universal/
-        # IMPORTANT: Also copy CLI inside the .app bundle so GUI can find it
-        cp dist/rt11extract_cli "RT11Extractor-macOS-universal/RT11Extract.app/Contents/MacOS/rt11extract_cli"
-        # Set permissions
-        chmod +x RT11Extractor-macOS-universal/rt11extract_cli
-        chmod +x RT11Extractor-macOS-universal/imd2raw
+        if [ -f "dist/rt11extract_cli" ]; then
+          cp dist/rt11extract_cli RT11Extractor-macOS-universal/
+          chmod +x RT11Extractor-macOS-universal/rt11extract_cli
+        fi
+        
+        if [ -f "dist/imd2raw" ]; then
+          cp dist/imd2raw RT11Extractor-macOS-universal/
+          chmod +x RT11Extractor-macOS-universal/imd2raw
+        fi
+        
+        # Check for GUI - could be .app bundle or single executable
+        if [ -d "dist/RT11Extract.app" ]; then
+          # Copy the .app bundle (main GUI application)
+          cp -r "dist/RT11Extract.app" RT11Extractor-macOS-universal/
+          echo "- RT11Extract.app (Aplicacion GUI bundle completa)" > gui_description.txt
+          echo "- Hacer doble clic en RT11Extract.app para abrir la interfaz grafica" > usage_gui.txt
+        elif [ -f "dist/RT11Extract" ]; then
+          # Copy single executable
+          cp dist/RT11Extract RT11Extractor-macOS-universal/RT11ExtractGUI
+          chmod +x RT11Extractor-macOS-universal/RT11ExtractGUI
+          echo "- RT11ExtractGUI (Ejecutable GUI completo)" > gui_description.txt
+          echo "- Ejecutar ./RT11ExtractGUI para abrir la interfaz grafica" > usage_gui.txt
+        else
+          echo "- No se pudo compilar la GUI" > gui_description.txt
+          echo "- Solo disponibles herramientas CLI" > usage_gui.txt
+        fi
+        
         # Copy documentation
-        cp README.md RT11Extractor-macOS-universal/
+        if [ -f "README.md" ]; then
+          cp README.md RT11Extractor-macOS-universal/
+        fi
+        
         # Create macOS-specific README
         echo "RT-11 Extractor para macOS universal" > RT11Extractor-macOS-universal/README_macOS.txt
         echo "" >> RT11Extractor-macOS-universal/README_macOS.txt
         echo "Contenido del paquete:" >> RT11Extractor-macOS-universal/README_macOS.txt
-        echo "- RT11Extract.app (Aplicacion GUI completa con TODO el backend integrado)" >> RT11Extractor-macOS-universal/README_macOS.txt
+        cat gui_description.txt >> RT11Extractor-macOS-universal/README_macOS.txt
         echo "- rt11extract_cli (CLI extractor universal)" >> RT11Extractor-macOS-universal/README_macOS.txt
         echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-macOS-universal/README_macOS.txt
         echo "" >> RT11Extractor-macOS-universal/README_macOS.txt
         echo "Uso:" >> RT11Extractor-macOS-universal/README_macOS.txt
-        echo "- Hacer doble clic en RT11Extract.app para abrir la interfaz grafica" >> RT11Extractor-macOS-universal/README_macOS.txt
+        cat usage_gui.txt >> RT11Extractor-macOS-universal/README_macOS.txt
         echo "- Desde Terminal:" >> RT11Extractor-macOS-universal/README_macOS.txt
         echo "  ./rt11extract_cli imagen.dsk -o carpeta/ (extractor)" >> RT11Extractor-macOS-universal/README_macOS.txt
         echo "  ./imd2raw imagen.imd imagen.dsk (conversor)" >> RT11Extractor-macOS-universal/README_macOS.txt
         echo "" >> RT11Extractor-macOS-universal/README_macOS.txt
-        echo "La aplicacion .app incluye TODOS los extractores y convertidores del backend." >> RT11Extractor-macOS-universal/README_macOS.txt
-        echo "No necesita archivos adicionales para funcionar." >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "Todos los ejecutables incluyen el backend completo integrado." >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "No necesitan archivos adicionales para funcionar." >> RT11Extractor-macOS-universal/README_macOS.txt
+        
+        # Show final package contents
+        echo "Final package contents:"
+        ls -la RT11Extractor-macOS-universal/
     
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v4
