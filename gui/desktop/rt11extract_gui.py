@@ -64,15 +64,16 @@ except ImportError:
 backend_path = setup_backend_path()
 
 # Windows-specific setup to ensure files exist without symlinks
-if sys.platform == "win32" and backend_path:
-    try:
-        windows_setup_script = backend_path / "filesystem_mount" / "windows_setup.py"
-        if windows_setup_script.exists():
-            import subprocess
-            subprocess.run([sys.executable, str(windows_setup_script)], 
-                         capture_output=True, text=True, timeout=10)
-    except Exception:
-        pass  # Fail silently if setup can't run
+# DISABLED: This was causing infinite GUI loop by potentially executing GUI recursively
+# if sys.platform == "win32" and backend_path:
+#     try:
+#         windows_setup_script = backend_path / "filesystem_mount" / "windows_setup.py"
+#         if windows_setup_script.exists():
+#             import subprocess
+#             subprocess.run([sys.executable, str(windows_setup_script)], 
+#                          capture_output=True, text=True, timeout=10)
+#     except Exception:
+#         pass  # Fail silently if setup can't run
 
 # Try to import backend modules
 try:
