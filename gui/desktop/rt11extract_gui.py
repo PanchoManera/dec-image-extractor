@@ -597,10 +597,9 @@ class RT11ExtractGUI:
                         self.root.after(0, lambda: self._scan_error("RT11Extract CLI not found in Windows package"))
                         return
                 elif sys.platform == 'darwin':
-                    # macOS: NEVER use external CLI in bundle - should not reach here
-                    self.log(f"DEBUG SCAN CLI: ERROR - CLI fallback should not be used in macOS bundle")
-                    self.root.after(0, lambda: self._scan_error("CLI fallback not supported in macOS bundle - backend scan should have worked"))
-                    return
+                    # macOS: Use backend script directly with python
+                    self.log(f"DEBUG SCAN CLI: Using backend script with python in macOS bundle")
+                    cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
                 else:
                     # Linux: Use CLI path from helper
                     cli_path = get_rt11extract_cli_path()
