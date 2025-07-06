@@ -578,37 +578,38 @@ class RT11ExtractGUI:
         self.log(f"DEBUG SCAN CLI: backend_script exists = {backend_script.exists() if backend_script else False}")
         
         if backend_script and backend_script.exists():
-            # CRITICAL FIX: When frozen, sys.executable points to GUI executable, not Python!
-            # We need to use python3 directly to avoid opening another GUI
+            # CRITICAL FIX: Use RT11Extract.exe CLI instead of python3 when frozen
             if getattr(sys, 'frozen', False):
-                # When packaged, use system python instead of GUI executable
-                python_cmd = 'python3'
-                # Verify python3 is available
-                import shutil
-                if not shutil.which('python3'):
-                    # Fallback to 'python'
-                    python_cmd = 'python' if shutil.which('python') else sys.executable
-                    self.log(f"DEBUG SCAN CLI: python3 not found, using fallback: {python_cmd}")
+                # When packaged, use the RT11Extract.exe CLI tool in same directory
+                rt11_cli_exe = Path(sys.executable).parent / "RT11Extract.exe"
+                if rt11_cli_exe.exists():
+                    self.log(f"DEBUG SCAN CLI: Using RT11Extract.exe CLI")
+                    cmd = [str(rt11_cli_exe), disk_file, '-o', str(scan_dir), '-v']
                 else:
-                    self.log(f"DEBUG SCAN CLI: Using system python3")
-                cmd = [python_cmd, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
+                    # Fallback: Use CLI path from helper
+                    cli_path = get_rt11extract_cli_path()
+                    if cli_path and cli_path.exists():
+                        self.log(f"DEBUG SCAN CLI: Using CLI path: {cli_path}")
+                        cmd = [str(cli_path), disk_file, '-o', str(scan_dir), '-v']
+                    else:
+                        self.log(f"DEBUG SCAN CLI: No CLI found, skipping scan")
+                        self.root.after(0, lambda: self._scan_error("RT11Extract CLI not found in package"))
+                        return
             else:
                 # When running as script, sys.executable is correct
                 cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
-            self.log(f"DEBUG SCAN CLI: Using backend_script command")
+            self.log(f"DEBUG SCAN CLI: Using CLI executable command")
         else:
             # Last resort: try to find universal extractor
             universal_script = backend_path / 'extractors' / 'universal_extractor.py' if backend_path else None
             self.log(f"DEBUG SCAN CLI: universal_script path = {universal_script}")
             self.log(f"DEBUG SCAN CLI: universal_script exists = {universal_script.exists() if universal_script else False}")
             if universal_script and universal_script.exists():
-                # Same fix for universal extractor
+                # CRITICAL FIX: Never use python3 in frozen mode - use executable instead
                 if getattr(sys, 'frozen', False):
-                    python_cmd = 'python3'
-                    import shutil
-                    if not shutil.which('python3'):
-                        python_cmd = 'python' if shutil.which('python') else sys.executable
-                    cmd = [python_cmd, str(universal_script), disk_file, '-o', str(scan_dir), '-v']
+                    # In frozen mode, skip this approach entirely as it won't work
+                    self.log(f"DEBUG SCAN CLI: Skipping universal_script in frozen mode")
+                    raise FileNotFoundError("Universal extractor not available in frozen mode")
                 else:
                     cmd = [sys.executable, str(universal_script), disk_file, '-o', str(scan_dir), '-v']
                 self.log(f"DEBUG SCAN CLI: Using universal_script command")
@@ -1072,10 +1073,21 @@ class RT11ExtractGUI:
             
             self.log("Starting extraction...")
             
-            # Run rt11extract for extraction
+            # Run rt11extract for extraction - CRITICAL FIX: Use RT11Extract.exe when frozen
             if getattr(sys, 'frozen', False):
-                # Running as bundled executable - run rt11extract directly (it's included in bundle)
-                cmd = [str(rt11extract_path), self.current_file, '-o', str(self.output_dir), '-v']
+                # When packaged, use the RT11Extract.exe CLI tool in same directory
+                rt11_cli_exe = Path(sys.executable).parent / "RT11Extract.exe"
+                if rt11_cli_exe.exists():
+                    cmd = [str(rt11_cli_exe), self.current_file, '-o', str(self.output_dir), '-v']
+                else:
+                    # Fallback: Use CLI path from helper
+                    cli_path = get_rt11extract_cli_path()
+                    if cli_path and cli_path.exists():
+                        cmd = [str(cli_path), self.current_file, '-o', str(self.output_dir), '-v']
+                    else:
+                        self.log("ERROR: No CLI found for extraction")
+                        self.root.after(0, self._extraction_error, "RT11Extract CLI not found in package")
+                        return
             else:
                 # Running as script - run rt11extract with python (it's a python script)
                 cmd = [sys.executable, str(rt11extract_path), self.current_file, '-o', str(self.output_dir), '-v']
