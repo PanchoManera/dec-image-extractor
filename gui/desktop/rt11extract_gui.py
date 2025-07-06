@@ -30,19 +30,57 @@ except ImportError:
         return backend_path
     
     def get_rt11extract_cli_path():
+        def debug_log(msg):
+            print(f"[DEBUG] RT11Extract CLI: {msg}")
+            
+        debug_log(f"Resolving CLI path in {'frozen' if getattr(sys, 'frozen', False) else 'script'} mode")
+        
         if getattr(sys, 'frozen', False):
             if sys.platform.startswith('win'):
+                # Windows: Try all possible CLI executables in same directory
                 exe_dir = Path(sys.executable).parent
-                return exe_dir / "RT11Extract.exe"
+                debug_log(f"Windows mode - searching in: {exe_dir}")
+                
+                # Try all possible CLI executables in prioritized order
+                cli_options = [
+                    "RT11Extract.exe",            # Main CLI
+                    "rt11extract_universal.exe",  # Universal extractor
+                    "universal_extractor.exe",    # Alternative name
+                    "rt11extract_cli.exe"        # Alternative name
+                ]
+                
+                for cli in cli_options:
+                    cli_path = exe_dir / cli
+                    debug_log(f"Checking for {cli}: {cli_path.exists()}")
+                    if cli_path.exists():
+                        debug_log(f"Found CLI: {cli_path}")
+                        return cli_path
+                
+                debug_log("No Windows CLI found!")
+                return None
+                
             elif sys.platform == 'darwin':
-                # CRITICAL: For macOS bundle, use the embedded CLI inside the app bundle
-                # The CLI should be embedded at Contents/cli/rt11extract_internal relative to executable
+                # macOS: Try all possible CLI executables in bundle/cli/
                 exe_path = Path(sys.executable)
-                # sys.executable is Contents/MacOS/RT11Extract, we need Contents/cli/rt11extract_internal
-                bundle_cli_path = exe_path.parent.parent / "cli" / "rt11extract_internal"
-                if bundle_cli_path.exists():
-                    return bundle_cli_path
-                # Fallback: return None to force direct Python scan
+                cli_dir = exe_path.parent.parent / "cli"
+                debug_log(f"macOS mode - searching in bundle CLI dir: {cli_dir}")
+                
+                # Try all possible CLI names in prioritized order
+                cli_options = [
+                    "rt11extract_cli",         # Main CLI
+                    "rt11extract_universal",    # Universal extractor
+                    "universal_extractor",      # Alternative name
+                    "RT11Extract"              # Alternative name
+                ]
+                
+                for cli in cli_options:
+                    cli_path = cli_dir / cli
+                    debug_log(f"Checking for {cli}: {cli_path.exists()}")
+                    if cli_path.exists():
+                        debug_log(f"Found CLI: {cli_path}")
+                        return cli_path
+                
+                debug_log("No macOS CLI found in bundle!")
                 return None
             else:
                 exe_dir = Path(sys.executable).parent
@@ -51,23 +89,50 @@ except ImportError:
             return Path(__file__).parent.parent.parent / "backend" / "extractors" / "rt11extract"
     
     def get_imd2raw_path():
+        def debug_log(msg):
+            print(f"[DEBUG] IMD2RAW: {msg}")
+            
+        debug_log(f"Resolving IMD2RAW path in {'frozen' if getattr(sys, 'frozen', False) else 'script'} mode")
+        
         if getattr(sys, 'frozen', False):
             if sys.platform.startswith('win'):
                 exe_dir = Path(sys.executable).parent
-                return exe_dir / "imd2raw.exe"
+                debug_log(f"Windows mode - searching in: {exe_dir}")
+                
+                # Try multiple names
+                imd_options = ["imd2raw.exe", "IMD2RAW.exe", "imd2dsk.exe"]
+                for imd in imd_options:
+                    imd_path = exe_dir / imd
+                    debug_log(f"Checking for {imd}: {imd_path.exists()}")
+                    if imd_path.exists():
+                        debug_log(f"Found IMD2RAW: {imd_path}")
+                        return imd_path
+                
+                debug_log("No Windows IMD2RAW found!")
+                return None
+                
             elif sys.platform == 'darwin':
                 # CRITICAL: For macOS bundle, use the embedded imd2raw inside the app bundle
                 exe_path = Path(sys.executable)
                 # sys.executable is Contents/MacOS/RT11Extract, we need Contents/cli/imd2raw
-                bundle_imd2raw_path = exe_path.parent.parent / "cli" / "imd2raw"
-                if bundle_imd2raw_path.exists():
-                    return bundle_imd2raw_path
-                # Fallback: external imd2raw
-                exe_dir = Path(sys.executable).parent
-                return exe_dir / "imd2raw"
-            else:
-                exe_dir = Path(sys.executable).parent
-                return exe_dir / "imd2raw"
+                debug_log(f"macOS mode - searching in bundle")
+                
+                # Try multiple locations and names
+                bundle_locations = [
+                    exe_path.parent.parent / "cli" / "imd2raw",      # Standard bundle location
+                    exe_path.parent.parent / "cli" / "IMD2RAW",      # Alternative name
+                    exe_path.parent / "imd2raw",                     # Direct in MacOS dir
+                    exe_path.parent.parent / "Resources" / "imd2raw" # Resources dir
+                ]
+                
+                for loc in bundle_locations:
+                    debug_log(f"Checking bundle location: {loc.exists()}")
+                    if loc.exists():
+                        debug_log(f"Found IMD2RAW in bundle: {loc}")
+                        return loc
+                
+                debug_log("No macOS IMD2RAW found in bundle!")
+                return None
         else:
             return Path(__file__).parent.parent.parent / "backend" / "image_converters" / "imd2raw.py"
     
@@ -352,17 +417,62 @@ class RT11ExtractGUI:
         # Bind double-click on treeview
         self.files_tree.bind('<Double-1>', self.on_file_double_click)
         
-    def _get_subprocess_kwargs(self):
-        """Get subprocess kwargs that hide console window on Windows"""
+def _get_subprocess_kwargs(self):
+        """Get subprocess kwargs that hide console window on Windows and handle macOS bundle paths"""
         kwargs = {
             'capture_output': True,
             'text': True,
-            'cwd': script_dir
         }
         
-        # On Windows, hide the console window
-        if sys.platform == "win32":
-            kwargs['creationflags'] = CREATE_NO_WINDOW
+        # Set proper working directory based on mode and platform
+        if getattr(sys, 'frozen', False):
+            if sys.platform == 'darwin':
+                # For macOS bundle, all CLIs should be in Contents/cli/
+                exe_path = Path(sys.executable)
+                cli_dir = exe_path.parent.parent / "cli"
+                if cli_dir.exists():
+                    kwargs['cwd'] = str(cli_dir)
+                else:
+                    # Fallback to executable directory
+                    kwargs['cwd'] = str(exe_path.parent)
+            else:
+                # For Windows and others, use executable directory
+                kwargs['cwd'] = str(Path(sys.executable).parent)
+        else:
+            # In script mode, use script directory
+            kwargs['cwd'] = str(script_dir)
+        
+        self.log(f"DEBUG: Setting up subprocess kwargs...")
+        self.log(f"DEBUG: Initial cwd = {kwargs['cwd']}")
+        
+            # On Windows, hide the console window
+            if sys.platform == "win32":
+                kwargs['creationflags'] = CREATE_NO_WINDOW
+                self.log("DEBUG: Added Windows CREATE_NO_WINDOW flag")
+            
+            # When running as compiled app, set proper working directory
+            if getattr(sys, 'frozen', False):
+                if sys.platform == "darwin":
+                    # For macOS bundle, all CLIs should be in Contents/cli/
+                    exe_path = Path(sys.executable)
+                    cli_dir = exe_path.parent.parent / "cli"
+                    if cli_dir.exists():
+                        kwargs['cwd'] = str(cli_dir)
+                        self.log(f"DEBUG: Using macOS bundle cli dir: {cli_dir}")
+                elif sys.platform == "win32":
+                    # For Windows, use same directory as GUI executable
+                    exe_dir = Path(sys.executable).parent
+                    kwargs['cwd'] = str(exe_dir)
+                    self.log(f"DEBUG: Using Windows exe dir: {exe_dir}")
+            
+            self.log(f"DEBUG: Final kwargs = {kwargs}")
+            return kwargs
+        if getattr(sys, 'frozen', False) and sys.platform == "darwin":
+            # Get the path to Contents/cli/ directory
+            exe_path = Path(sys.executable)
+            cli_dir = exe_path.parent.parent / "cli"
+            if cli_dir.exists():
+                kwargs['cwd'] = str(cli_dir)
         
         return kwargs
     
@@ -601,74 +711,90 @@ class RT11ExtractGUI:
         self.log(f"DEBUG SCAN CLI: backend_script path = {backend_script}")
         self.log(f"DEBUG SCAN CLI: backend_script exists = {backend_script.exists() if backend_script else False}")
         
-        if backend_script and backend_script.exists():
-            # CRITICAL FIX: NEVER use sys.executable when frozen as it opens another GUI!
-            if getattr(sys, 'frozen', False):
-                # When bundled, we MUST use the embedded Python runtime, not the GUI executable
-                self.log(f"DEBUG SCAN CLI: In frozen mode - using embedded Python runtime")
+        # SIMPLIFIED APPROACH: Use the actual CLI executables we built
+        if getattr(sys, 'frozen', False):
+            # When bundled, use the actual CLI executables in the same directory or bundle
+            self.log(f"DEBUG SCAN CLI: In frozen mode - using actual CLI executables")
+            
+            if sys.platform.startswith('win'):
+                # Windows: Use RT11Extract.exe or rt11extract_universal.exe
+                exe_dir = Path(sys.executable).parent
                 
-                # Find the embedded Python executable inside the bundle
-                if sys.platform.startswith('win'):
-                    # Windows: PyInstaller embeds python.exe inside the bundle temp directory
-                    # Use the embedded Python from sys._MEIPASS or import subprocess to run backend directly
-                    self.log(f"DEBUG SCAN CLI: Windows bundle - running backend script directly in Python")
-                    
-                    # Import and run the backend module directly instead of subprocess
-                    try:
-                        import importlib.util
-                        spec = importlib.util.spec_from_file_location("rt11extract", backend_script)
-                        rt11extract_module = importlib.util.module_from_spec(spec)
-                        
-                        # Prepare arguments for the module
-                        original_argv = sys.argv.copy()
-                        sys.argv = ['rt11extract', disk_file, '-o', str(scan_dir), '-v']
-                        
-                        try:
-                            spec.loader.exec_module(rt11extract_module)
-                            self.log(f"DEBUG SCAN CLI: Backend module executed successfully")
-                            return  # Success - don't use subprocess
-                        except SystemExit:
-                            # Expected - backend scripts often call sys.exit()
-                            self.log(f"DEBUG SCAN CLI: Backend script completed with SystemExit")
-                            return
-                        finally:
-                            sys.argv = original_argv
-                            
-                    except Exception as e:
-                        self.log(f"DEBUG SCAN CLI: Failed to run backend directly: {e}")
-                        # Fall back to subprocess with embedded CLI if available
-                        cli_path = get_rt11extract_cli_path()
-                        if cli_path and cli_path.exists():
-                            self.log(f"DEBUG SCAN CLI: Using embedded CLI: {cli_path}")
-                            cmd = [str(cli_path), disk_file, '-o', str(scan_dir), '-v']
-                        else:
-                            self.log(f"DEBUG SCAN CLI: No embedded CLI found, cannot scan")
-                            self.root.after(0, lambda: self._scan_error("No backend available in bundle"))
-                            return
+                # Try executables in prioritized order
+                cli_options = [
+                    "RT11Extract.exe",
+                    "rt11extract_universal.exe",
+                    "universal_extractor.exe",
+                    "rt11extract_cli.exe"
+                ]
+                
+                cli_path = None
+                for cli in cli_options:
+                    test_path = exe_dir / cli
+                    if test_path.exists():
+                        cli_path = test_path
+                        self.log(f"DEBUG SCAN CLI: Using {cli}: {cli_path}")
+                        break
+                
+                if cli_path:
+                    cmd = [str(cli_path), disk_file, '-o', str(scan_dir), '-v']
+                else:
+                    self.log(f"DEBUG SCAN CLI: No CLI executables found in {exe_dir}")
+                    self.root.after(0, lambda: self._scan_error("RT11Extract CLI executables not found in package"))
+                    return
                         
                 elif sys.platform == 'darwin':
-                    # macOS: Similar approach - run backend directly or use embedded CLI
-                    self.log(f"DEBUG SCAN CLI: macOS bundle - running backend script directly in Python")
+                    # macOS: Check for embedded CLIs in bundle first
+                    self.log(f"DEBUG SCAN CLI: macOS bundle - checking for embedded CLIs")
                     
-                    try:
-                        import importlib.util
-                        spec = importlib.util.spec_from_file_location("rt11extract", backend_script)
-                        rt11extract_module = importlib.util.module_from_spec(spec)
+                    # Get the path to Contents/cli/ directory
+                    exe_path = Path(sys.executable)
+                    cli_dir = exe_path.parent.parent / "cli"
+                    
+                    # Try CLI executables in prioritized order
+                    cli_options = [
+                        "rt11extract_cli",
+                        "rt11extract_universal",
+                        "universal_extractor",
+                        "RT11Extract"
+                    ]
+                    
+                    cli_path = None
+                    for cli in cli_options:
+                        test_path = cli_dir / cli
+                        if test_path.exists():
+                            cli_path = test_path
+                            self.log(f"DEBUG SCAN CLI: Using bundled CLI: {cli_path}")
+                            # Ensure CLI is executable
+                            test_path.chmod(test_path.stat().st_mode | 0o755)
+                            break
+                    
+                    if cli_path:
+                        cmd = [str(cli_path), disk_file, '-o', str(scan_dir), '-v']
+                        # Command will be run with cli_dir as CWD by _get_subprocess_kwargs()
+                    else:
+                        self.log("DEBUG SCAN CLI: No bundled CLIs found, attempting direct backend run...")
                         
-                        # Prepare arguments for the module
-                        original_argv = sys.argv.copy()
-                        sys.argv = ['rt11extract', disk_file, '-o', str(scan_dir), '-v']
-                        
+                        # Fall back to running backend directly
                         try:
-                            spec.loader.exec_module(rt11extract_module)
-                            self.log(f"DEBUG SCAN CLI: Backend module executed successfully")
-                            return  # Success - don't use subprocess
-                        except SystemExit:
-                            # Expected - backend scripts often call sys.exit()
-                            self.log(f"DEBUG SCAN CLI: Backend script completed with SystemExit")
-                            return
-                        finally:
-                            sys.argv = original_argv
+                            import importlib.util
+                            spec = importlib.util.spec_from_file_location("rt11extract", backend_script)
+                            rt11extract_module = importlib.util.module_from_spec(spec)
+                            
+                            # Prepare arguments for the module
+                            original_argv = sys.argv.copy()
+                            sys.argv = ['rt11extract', disk_file, '-o', str(scan_dir), '-v']
+                            
+                            try:
+                                spec.loader.exec_module(rt11extract_module)
+                                self.log(f"DEBUG SCAN CLI: Backend module executed successfully")
+                                return  # Success - don't use subprocess
+                            except SystemExit:
+                                # Expected - backend scripts often call sys.exit()
+                                self.log(f"DEBUG SCAN CLI: Backend script completed with SystemExit")
+                                return
+                            finally:
+                                sys.argv = original_argv
                             
                     except Exception as e:
                         self.log(f"DEBUG SCAN CLI: Failed to run backend directly: {e}")
@@ -683,14 +809,28 @@ class RT11ExtractGUI:
                             return
                 else:
                     # Linux: Use embedded CLI if available
-                    cli_path = get_rt11extract_cli_path()
-                    if cli_path and cli_path.exists():
-                        self.log(f"DEBUG SCAN CLI: Using CLI path: {cli_path}")
-                        cmd = [str(cli_path), disk_file, '-o', str(scan_dir), '-v']
-                    else:
-                        self.log(f"DEBUG SCAN CLI: No CLI found, skipping scan")
-                        self.root.after(0, lambda: self._scan_error("RT11Extract CLI not found in package"))
-                        return
+            cli_path = get_rt11extract_cli_path()
+            if cli_path and cli_path.exists():
+                # Enable execution on macOS if needed
+                if sys.platform == 'darwin':
+                    try:
+                        cli_path.chmod(cli_path.stat().st_mode | 0o755)
+                    except Exception as e:
+                        self.log(f"Warning: Could not set executable permissions: {e}")
+                
+                self.log(f"Using CLI path: {cli_path}")
+                cmd = [str(cli_path), disk_file, '-o', str(scan_dir), '-v']
+            else:
+                self.log(f"DEBUG SCAN CLI: No CLI found, falling back to backend")
+                # Try backend import first
+                try:
+                    from extractors.universal_extractor import UniversalExtractor
+                    self.log("Using backend UniversalExtractor directly")
+                    return  # Let the backend code handle it
+                except ImportError:
+                    self.log("Could not import backend, extraction not possible")
+                    self.root.after(0, lambda: self._scan_error("RT11Extract CLI not found and backend import failed"))
+                    return
             else:
                 # When running as script, sys.executable is correct Python
                 cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
@@ -1171,19 +1311,28 @@ class RT11ExtractGUI:
             
             # Run rt11extract for extraction - CRITICAL FIX: Use RT11Extract.exe when frozen
             if getattr(sys, 'frozen', False):
-                # When packaged, use the RT11Extract.exe CLI tool in same directory
-                rt11_cli_exe = Path(sys.executable).parent / "RT11Extract.exe"
-                if rt11_cli_exe.exists():
-                    cmd = [str(rt11_cli_exe), self.current_file, '-o', str(self.output_dir), '-v']
-                else:
-                    # Fallback: Use CLI path from helper
-                    cli_path = get_rt11extract_cli_path()
-                    if cli_path and cli_path.exists():
-                        cmd = [str(cli_path), self.current_file, '-o', str(self.output_dir), '-v']
-                    else:
-                        self.log("ERROR: No CLI found for extraction")
-                        self.root.after(0, self._extraction_error, "RT11Extract CLI not found in package")
-                        return
+            # When packaged, use the proper CLI executable based on platform
+            cli_path = get_rt11extract_cli_path()
+            if cli_path and cli_path.exists():
+                # Enable execution on macOS if needed
+                if sys.platform == 'darwin':
+                    try:
+                        cli_path.chmod(cli_path.stat().st_mode | 0o755)
+                    except Exception as e:
+                        self.log(f"Warning: Could not set executable permissions: {e}")
+                
+                cmd = [str(cli_path), self.current_file, '-o', str(self.output_dir), '-v']
+                self.log(f"Using CLI path: {cli_path}")
+            else:
+                # Try importing and using backend directly
+                try:
+                    from extractors.universal_extractor import UniversalExtractor
+                    self.log("Using backend UniversalExtractor directly")
+                    return  # Let the backend code handle it
+                except ImportError:
+                    self.log("Could not import backend, extraction not possible")
+                    self.root.after(0, self._extraction_error, "RT11Extract CLI not found and backend import failed")
+                    return
             else:
                 # Running as script - run rt11extract with python (it's a python script)
                 cmd = [sys.executable, str(rt11extract_path), self.current_file, '-o', str(self.output_dir), '-v']
@@ -1386,12 +1535,44 @@ class RT11ExtractGUI:
         # Start conversion in background thread
         threading.Thread(target=self._convert_imd_thread, args=(input_file, output_file), daemon=True).start()
         
-    def _convert_imd_thread(self, input_file, output_file):
+def _convert_imd_thread(self, input_file, output_file):
         """Background thread for IMD conversion"""
         try:
             self.root.after(0, lambda: self.progress_var.set("Converting IMD to DSK..."))
             self.root.after(0, lambda: self.progress_bar.config(mode='indeterminate'))
             self.root.after(0, lambda: self.progress_bar.start())
+            
+            # Always try backend first in non-frozen mode
+            if not getattr(sys, 'frozen', False):
+                try:
+                    from image_converters.imd2raw import IMDConverter
+                    converter = IMDConverter(input_file, output_file, verbose=False)
+                    success = converter.convert()
+                    if success:
+                        self.log("IMD conversion completed successfully using backend!")
+                        return
+                except ImportError:
+                    self.log("Could not import IMD converter backend, trying external tool...")
+                except Exception as e:
+                    self.log(f"Backend IMD conversion failed: {e}, trying external tool...")
+            
+            # Use external imd2raw tool
+            imd2raw = get_imd2raw_path()
+            if imd2raw and imd2raw.exists():
+                self.log(f"Using external IMD converter: {imd2raw}")
+                # Run command in appropriate directory
+                kwargs = self._get_subprocess_kwargs()
+                cmd = [str(imd2raw), input_file, output_file]
+                result = subprocess.run(cmd, **kwargs)
+                if result.returncode == 0:
+                    self.log("IMD conversion completed successfully!")
+                    self.root.after(0, lambda: messagebox.showinfo("Success", 
+                        f"IMD file converted successfully!\n\nInput: {os.path.basename(input_file)}\nOutput: {os.path.basename(output_file)}"))
+                    return
+                else:
+                    raise Exception(f"IMD converter failed with code {result.returncode}")
+            else:
+                raise Exception("IMD converter not found")
             
             self.log(f"Starting IMD conversion: {os.path.basename(input_file)} -> {os.path.basename(output_file)}")
             
@@ -1479,11 +1660,17 @@ Digital Equipment Corporation (DEC) computers."""
     def check_fuse_availability(self):
         """Check if FUSE is available on this system"""
         # Check if FUSE system is available
-        if sys.platform == 'darwin':  # macOS
-            # Check for macFUSE (more lenient check)
-            return os.path.exists('/usr/local/lib/libfuse.dylib') or \
-                   os.path.exists('/usr/local/lib/libfuse.2.dylib') or \
-                   os.path.exists('/opt/homebrew/lib/libfuse.dylib')
+                elif sys.platform == 'darwin':
+                    # macOS: Check for macFUSE (complete set of possible locations)
+                    fuse_locations = [
+                        '/usr/local/lib/libfuse.dylib',
+                        '/usr/local/lib/libfuse.2.dylib',
+                        '/opt/homebrew/lib/libfuse.dylib',
+                        '/opt/homebrew/lib/libfuse.2.dylib',
+                        '/usr/local/opt/macfuse/lib/libfuse.dylib',
+                        '/usr/local/opt/macfuse/lib/libfuse.2.dylib'
+                    ]
+                    return any(os.path.exists(path) for path in fuse_locations)
         elif sys.platform.startswith('linux'):  # Linux
             # Check for FUSE utilities
             try:
@@ -2310,6 +2497,13 @@ Digital Equipment Corporation (DEC) computers."""
         self.root.destroy()
 
 def main():
+    # Add startup debug logging
+    print("\nRT-11 Extract GUI Starting...")
+    print(f"Running in {'frozen/compiled' if getattr(sys, 'frozen', False) else 'script'} mode")
+    print(f"Platform: {sys.platform}")
+    print(f"Executable: {sys.executable}")
+    print(f"Working directory: {os.getcwd()}")
+    
     # Create main window
     root = tk.Tk()
     
@@ -2320,6 +2514,7 @@ def main():
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
     
     # Start application
+    print("Starting main loop...\n")
     root.mainloop()
 
 if __name__ == '__main__':

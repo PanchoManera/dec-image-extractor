@@ -30,8 +30,36 @@ jobs:
       run: |
         $env:PYTHONPATH = "."
         
-        # 1. Build CLI extractor (main wrapper) - FIXED: Include rt11extract_universal
-        pyinstaller --onefile --name "RT11Extract" --paths="backend" --paths="." --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --add-data "backend/extractors/rt11extract_universal;." --hidden-import="backend.extractors" --hidden-import="backend.filesystems" backend/extractors/rt11extract
+        # 1. Build ALL possible CLI tools
+        Write-Host "Building ALL CLI tools..."
+        
+        # Main CLI extractor
+        Write-Host "Building RT11Extract.exe..."
+        pyinstaller --onefile --name "RT11Extract" --paths="backend" --paths="." \
+          --add-data "backend/extractors;backend/extractors" \
+          --add-data "backend/filesystems;backend/filesystems" \
+          --add-data "backend/extractors/rt11extract_universal;." \
+          --hidden-import="backend.extractors" \
+          --hidden-import="backend.filesystems" \
+          backend/extractors/rt11extract
+          
+        # Universal extractor 
+        Write-Host "Building rt11extract_universal.exe..."
+        pyinstaller --onefile --name "rt11extract_universal" --paths="backend" --paths="." \
+          --add-data "backend/extractors;backend/extractors" \
+          --add-data "backend/filesystems;backend/filesystems" \
+          --hidden-import="backend.extractors" \
+          --hidden-import="backend.filesystems" \
+          backend/extractors/rt11extract_universal
+          
+        # Universal extractor from .py
+        Write-Host "Building universal_extractor.exe..."
+        pyinstaller --onefile --name "universal_extractor" --paths="backend" --paths="." \
+          --add-data "backend/extractors;backend/extractors" \
+          --add-data "backend/filesystems;backend/filesystems" \
+          --hidden-import="backend.extractors" \
+          --hidden-import="backend.filesystems" \
+          backend/extractors/universal_extractor.py
         
         # 2. Build IMD converter
         pyinstaller --onefile --name "imd2raw" --paths="backend" --paths="." backend/image_converters/imd2raw.py
@@ -39,18 +67,48 @@ jobs:
         # 3. Build GUI - CRITICAL FIX: Use backend directly, skip problematic filesystem_mount
         Write-Host "Building Windows GUI with simplified backend..."
         
-        # CRITICAL: Include rt11extract_universal in both CLI and GUI builds for Windows
+        # Build GUI with ALL backends and extractors for maximum compatibility
+        Write-Host "Building Windows GUI..."
+        
+        # Start with base command
+        $gui_cmd = "pyinstaller --onefile --windowed --name RT11ExtractGUI "
+        
+        # Add icon if available
         if (Test-Path "icon.png") {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --add-data "backend/extractors/rt11extract_universal;." --add-data "icon.png;." --hidden-import="tkinter" --hidden-import="PIL" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" --hidden-import="backend.extractors.universal_extractor" --hidden-import="backend.extractors.rt11extract_smart" gui/desktop/rt11extract_gui.py
-        } else {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --add-data "backend/extractors/rt11extract_universal;." --hidden-import="tkinter" --hidden-import="PIL" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" --hidden-import="backend.extractors.universal_extractor" --hidden-import="backend.extractors.rt11extract_smart" gui/desktop/rt11extract_gui.py
+            $gui_cmd += "--icon=icon.png --add-data icon.png;. "
         }
+        
+        # Add paths
+        $gui_cmd += "--paths=backend --paths=gui/desktop --paths=. "
+        
+        # Add all backend data and scripts
+        $gui_cmd += "--add-data backend/extractors;backend/extractors "
+        $gui_cmd += "--add-data backend/filesystems;backend/filesystems "
+        $gui_cmd += "--add-data backend/extractors/rt11extract_universal;. "
+        $gui_cmd += "--add-data backend/extractors/universal_extractor.py;. "
+        
+        # Add all imports
+        $gui_cmd += "--hidden-import=tkinter "
+        $gui_cmd += "--hidden-import=PIL "
+        $gui_cmd += "--hidden-import=backend.extractors "
+        $gui_cmd += "--hidden-import=backend.filesystems "
+        $gui_cmd += "--hidden-import=backend.extractors.universal_extractor "
+        $gui_cmd += "--hidden-import=backend.extractors.rt11extract_smart "
+        
+        # Add main script
+        $gui_cmd += "gui/desktop/rt11extract_gui.py"
+        
+        Write-Host "Running GUI build command:"
+        Write-Host $gui_cmd
+        Invoke-Expression $gui_cmd
     
     - name: Create Windows package
       run: |
         mkdir RT11Extractor-Windows-x64
-        # Copy executables
+        # Copy ALL executables
         if (Test-Path "dist\RT11Extract.exe") { copy dist\RT11Extract.exe RT11Extractor-Windows-x64\ }
+        if (Test-Path "dist\rt11extract_universal.exe") { copy dist\rt11extract_universal.exe RT11Extractor-Windows-x64\ }
+        if (Test-Path "dist\universal_extractor.exe") { copy dist\universal_extractor.exe RT11Extractor-Windows-x64\ }
         if (Test-Path "dist\RT11ExtractGUI.exe") { copy dist\RT11ExtractGUI.exe RT11Extractor-Windows-x64\ }
         if (Test-Path "dist\imd2raw.exe") { copy dist\imd2raw.exe RT11Extractor-Windows-x64\ }
         # Copy documentation
@@ -103,7 +161,7 @@ jobs:
         echo "Backend directory:"
         ls -la backend/ || echo "Backend directory not found"
         
-        # 1. Build CLI extractor (main wrapper) - simplified
+        # 1. Build all CLI tools (universal, rt11extract, rt11extract_universal)
         echo "Building CLI extractor..."
         pyinstaller --onefile --name "rt11extract_cli" --paths="." backend/extractors/rt11extract || {
           echo "CLI build failed, trying alternative approach..."
@@ -112,6 +170,22 @@ jobs:
           mkdir -p dist
           cp rt11extract_cli dist/
         }
+        
+        # Build rt11extract_universal
+        echo "Building rt11extract_universal..."
+        pyinstaller --onefile --name "rt11extract_universal" --paths="backend" --paths="." \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          backend/extractors/rt11extract_universal || echo "rt11extract_universal build failed"
+        
+        # Build universal_extractor
+        echo "Building universal_extractor..."
+        pyinstaller --onefile --name "universal_extractor" --paths="backend" --paths="." \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          backend/extractors/universal_extractor.py || echo "universal_extractor build failed"
         
         # 2. Build IMD converter - simplified
         echo "Building IMD converter..."
@@ -136,18 +210,32 @@ jobs:
           --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
           backend/extractors/rt11extract || echo "Internal CLI build failed, continuing..."
         
-        # Now build GUI with the CLI and imd2raw embedded
-        pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="backend" --paths="." \
+        # Now build GUI with ALL executables embedded - IMPORTANT: Name it RT11ExtractGUI
+        echo "Building macOS GUI with ALL CLI tools embedded..."
+        
+        # First, move all built CLIs to cli/ subdirectory
+        mkdir -p cli_tools
+        for cli in rt11extract_cli rt11extract_universal universal_extractor imd2raw; do
+          if [ -f "dist/$cli" ]; then
+            echo "Moving $cli to cli_tools/..."
+            cp "dist/$cli" "cli_tools/"
+            chmod +x "cli_tools/$cli"
+          fi
+        done
+        
+        # Build GUI with cli_tools directory embedded
+        CLI_EMBEDS="--add-data cli_tools:cli"
+        
+        pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="gui/desktop" --paths="backend" --paths="." \
           --add-data "backend/extractors:backend/extractors" \
           --add-data "backend/filesystems:backend/filesystems" \
           --add-data "backend/extractors/rt11extract_universal:backend/extractors" \
-          --add-data "dist/rt11extract_internal:cli" \
-          --add-data "dist/imd2raw:cli" \
+          $CLI_EMBEDS \
           --hidden-import="tkinter" --hidden-import="PIL" \
           --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
           gui/desktop/rt11extract_gui.py || {
           echo "GUI build failed, trying minimal build..."
-          pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="gui/desktop" --paths="." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
         }
         
         # Check what was built
@@ -173,18 +261,23 @@ jobs:
           chmod +x RT11Extractor-macOS-universal/imd2raw
         fi
         
-        # Check for GUI - could be .app bundle or single executable
-        if [ -d "dist/RT11Extract.app" ]; then
+        # Check for GUI - should be RT11ExtractGUI.app
+        if [ -d "dist/RT11ExtractGUI.app" ]; then
           # Copy the .app bundle (main GUI application)
-          cp -r "dist/RT11Extract.app" RT11Extractor-macOS-universal/
-          echo "- RT11Extract.app (Aplicacion GUI bundle completa)" > gui_description.txt
-          echo "- Hacer doble clic en RT11Extract.app para abrir la interfaz grafica" > usage_gui.txt
-        elif [ -f "dist/RT11Extract" ]; then
+          cp -r "dist/RT11ExtractGUI.app" RT11Extractor-macOS-universal/
+          echo "- RT11ExtractGUI.app (Aplicacion GUI bundle completa con CLI embebidos)" > gui_description.txt
+          echo "- Hacer doble clic en RT11ExtractGUI.app para abrir la interfaz grafica" > usage_gui.txt
+        elif [ -f "dist/RT11ExtractGUI" ]; then
           # Copy single executable
-          cp dist/RT11Extract RT11Extractor-macOS-universal/RT11ExtractGUI
+          cp dist/RT11ExtractGUI RT11Extractor-macOS-universal/
           chmod +x RT11Extractor-macOS-universal/RT11ExtractGUI
           echo "- RT11ExtractGUI (Ejecutable GUI completo)" > gui_description.txt
           echo "- Ejecutar ./RT11ExtractGUI para abrir la interfaz grafica" > usage_gui.txt
+        elif [ -d "dist/RT11Extract.app" ]; then
+          # Fallback: Copy old name but rename
+          cp -r "dist/RT11Extract.app" RT11Extractor-macOS-universal/RT11ExtractGUI.app
+          echo "- RT11ExtractGUI.app (Aplicacion GUI bundle completa)" > gui_description.txt
+          echo "- Hacer doble clic en RT11ExtractGUI.app para abrir la interfaz grafica" > usage_gui.txt
         else
           echo "- No se pudo compilar la GUI" > gui_description.txt
           echo "- Solo disponibles herramientas CLI" > usage_gui.txt
