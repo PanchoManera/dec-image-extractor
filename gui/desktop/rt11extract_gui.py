@@ -31,23 +31,42 @@ except ImportError:
     
     def get_rt11extract_cli_path():
         if getattr(sys, 'frozen', False):
-            exe_dir = Path(sys.executable).parent
             if sys.platform.startswith('win'):
+                exe_dir = Path(sys.executable).parent
                 return exe_dir / "RT11Extract.exe"
             elif sys.platform == 'darwin':
-                # CRITICAL: In macOS bundle, don't use external CLI - return None to force direct scan
+                # CRITICAL: For macOS bundle, use the embedded CLI inside the app bundle
+                # The CLI should be embedded at Contents/cli/rt11extract_internal relative to executable
+                exe_path = Path(sys.executable)
+                # sys.executable is Contents/MacOS/RT11Extract, we need Contents/cli/rt11extract_internal
+                bundle_cli_path = exe_path.parent.parent / "cli" / "rt11extract_internal"
+                if bundle_cli_path.exists():
+                    return bundle_cli_path
+                # Fallback: return None to force direct Python scan
                 return None
             else:
+                exe_dir = Path(sys.executable).parent
                 return exe_dir / "RT11Extract"
         else:
             return Path(__file__).parent.parent.parent / "backend" / "extractors" / "rt11extract"
     
     def get_imd2raw_path():
         if getattr(sys, 'frozen', False):
-            exe_dir = Path(sys.executable).parent
             if sys.platform.startswith('win'):
+                exe_dir = Path(sys.executable).parent
                 return exe_dir / "imd2raw.exe"
+            elif sys.platform == 'darwin':
+                # CRITICAL: For macOS bundle, use the embedded imd2raw inside the app bundle
+                exe_path = Path(sys.executable)
+                # sys.executable is Contents/MacOS/RT11Extract, we need Contents/cli/imd2raw
+                bundle_imd2raw_path = exe_path.parent.parent / "cli" / "imd2raw"
+                if bundle_imd2raw_path.exists():
+                    return bundle_imd2raw_path
+                # Fallback: external imd2raw
+                exe_dir = Path(sys.executable).parent
+                return exe_dir / "imd2raw"
             else:
+                exe_dir = Path(sys.executable).parent
                 return exe_dir / "imd2raw"
         else:
             return Path(__file__).parent.parent.parent / "backend" / "image_converters" / "imd2raw.py"
@@ -587,15 +606,9 @@ class RT11ExtractGUI:
             if getattr(sys, 'frozen', False):
                 # CRITICAL: Platform-specific CLI handling
                 if sys.platform.startswith('win'):
-                    # Windows: Use RT11Extract.exe CLI tool in same directory
-                    rt11_cli_exe = Path(sys.executable).parent / "RT11Extract.exe"
-                    if rt11_cli_exe.exists():
-                        self.log(f"DEBUG SCAN CLI: Using RT11Extract.exe CLI")
-                        cmd = [str(rt11_cli_exe), disk_file, '-o', str(scan_dir), '-v']
-                    else:
-                        self.log(f"DEBUG SCAN CLI: RT11Extract.exe not found in Windows package")
-                        self.root.after(0, lambda: self._scan_error("RT11Extract CLI not found in Windows package"))
-                        return
+                    # Windows: Use backend script directly like macOS (more reliable)
+                    self.log(f"DEBUG SCAN CLI: Using backend script with python in Windows bundle")
+                    cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
                 elif sys.platform == 'darwin':
                     # macOS: Use backend script directly with python
                     self.log(f"DEBUG SCAN CLI: Using backend script with python in macOS bundle")
