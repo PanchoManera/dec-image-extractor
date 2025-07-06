@@ -108,7 +108,7 @@ def call_rt11_extractor(args):
     rt11_universal = script_dir / "rt11extract_universal"
     
     if not rt11_universal.exists():
-        print(f"❌ Error: RT-11 extractor not found at {rt11_universal}")
+        print(f"Error: RT-11 extractor not found at {rt11_universal}")
         return 1
     
     # Construir comando
@@ -119,7 +119,7 @@ def call_rt11_extractor(args):
         result = subprocess.run(cmd, capture_output=False)
         return result.returncode
     except Exception as e:
-        print(f"❌ Error running RT-11 extractor: {e}")
+        print(f"Error running RT-11 extractor: {e}")
         return 1
 
 def call_unix_extractor(args):
@@ -130,7 +130,7 @@ def call_unix_extractor(args):
     unix_script = filesystems_dir / "unix_pdp11_extractor.py"
     
     if not unix_script.exists():
-        print(f"❌ Error: Unix extractor not found at {unix_script}")
+        print(f"Error: Unix extractor not found at {unix_script}")
         return 1
     
     # Mapear parámetros de rt11extract a unix_pdp11_extractor
@@ -154,7 +154,7 @@ def call_unix_extractor(args):
         result = subprocess.run(cmd, capture_output=False)
         return result.returncode
     except Exception as e:
-        print(f"❌ Error running Unix extractor: {e}")
+        print(f"Error running Unix extractor: {e}")
         return 1
 
 def call_ods1_extractor(args):
@@ -165,7 +165,7 @@ def call_ods1_extractor(args):
     ods1_script = filesystems_dir / "ods1_extractor_v2.py"
     
     if not ods1_script.exists():
-        print(f"❌ Error: ODS-1 extractor not found at {ods1_script}")
+        print(f"Error: ODS-1 extractor not found at {ods1_script}")
         return 1
     
     # Mapear parámetros de rt11extract a ods1_extractor_v2
@@ -186,7 +186,7 @@ def call_ods1_extractor(args):
         result = subprocess.run(cmd, capture_output=False)
         return result.returncode
     except Exception as e:
-        print(f"❌ Error running ODS-1 extractor: {e}")
+        print(f"Error running ODS-1 extractor: {e}")
         return 1
 
 def call_universal_extractor(args):
@@ -195,7 +195,7 @@ def call_universal_extractor(args):
     smart_script = script_dir / "pdp11_smart_extractor.py"
     
     if not smart_script.exists():
-        print(f"❌ Error: Universal extractor not found at {smart_script}")
+        print(f"Error: Universal extractor not found at {smart_script}")
         return 1
     
     # Mapear parámetros
@@ -216,7 +216,7 @@ def call_universal_extractor(args):
         result = subprocess.run(cmd, capture_output=False)
         return result.returncode
     except Exception as e:
-        print(f"❌ Error running universal extractor: {e}")
+        print(f"Error running universal extractor: {e}")
         return 1
 
 def main():
@@ -263,38 +263,38 @@ def main():
     
     # Verificar que el archivo existe
     if not os.path.exists(args.image):
-        print(f"❌ Error: File '{args.image}' not found")
+        print(f"Error: File '{args.image}' not found")
         return 1
     
     # Determinar qué extractor usar
     if args.force_rt11:
         if args.verbose:
-            print("🔧 Forced RT-11 mode")
+            print("Forced RT-11 mode")
         return call_rt11_extractor(args)
     elif args.force_unix:
         if args.verbose:
-            print("🔧 Forced Unix mode")
+            print("Forced Unix mode")
         return call_unix_extractor(args)
     elif args.use_universal:
         if args.verbose:
-            print("🔧 Using universal extractor")
+            print("Using universal extractor")
         return call_universal_extractor(args)
     else:
         # Auto-detectar tipo de filesystem
         if args.verbose:
-            print(f"🔍 Auto-detecting filesystem type in: {args.image}")
+            print(f"Auto-detecting filesystem type in: {args.image}")
         
         fs_type = detect_filesystem_type(args.image)
         
         if args.verbose:
             if fs_type == "rt11":
-                print("✅ RT-11 filesystem detected, using RT-11 extractor")
+                print("RT-11 filesystem detected, using RT-11 extractor")
             elif fs_type == "unix":
-                print("✅ Unix PDP-11 filesystem detected, using Unix extractor")
+                print("Unix PDP-11 filesystem detected, using Unix extractor")
             elif fs_type == "ods1":
-                print("✅ ODS-1/Files-11 filesystem detected, using RSX-11/VMS extractor")
+                print("ODS-1/Files-11 filesystem detected, using RSX-11/VMS extractor")
             else:
-                print("❓ Unknown filesystem, defaulting to RT-11 extractor")
+                print("Unknown filesystem, defaulting to RT-11 extractor")
         
         # Llamar al extractor apropiado
         if fs_type == "rt11":

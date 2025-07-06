@@ -35,7 +35,8 @@ except ImportError:
             if sys.platform.startswith('win'):
                 return exe_dir / "RT11Extract.exe"
             elif sys.platform == 'darwin':
-                return exe_dir / "rt11extract_cli"
+                # CRITICAL: In macOS bundle, don't use external CLI - return None to force direct scan
+                return None
             else:
                 return exe_dir / "RT11Extract"
         else:
@@ -584,13 +585,24 @@ class RT11ExtractGUI:
         if backend_script and backend_script.exists():
             # CRITICAL FIX: Use RT11Extract.exe CLI instead of python3 when frozen
             if getattr(sys, 'frozen', False):
-                # When packaged, use the RT11Extract.exe CLI tool in same directory
-                rt11_cli_exe = Path(sys.executable).parent / "RT11Extract.exe"
-                if rt11_cli_exe.exists():
-                    self.log(f"DEBUG SCAN CLI: Using RT11Extract.exe CLI")
-                    cmd = [str(rt11_cli_exe), disk_file, '-o', str(scan_dir), '-v']
+                # CRITICAL: Platform-specific CLI handling
+                if sys.platform.startswith('win'):
+                    # Windows: Use RT11Extract.exe CLI tool in same directory
+                    rt11_cli_exe = Path(sys.executable).parent / "RT11Extract.exe"
+                    if rt11_cli_exe.exists():
+                        self.log(f"DEBUG SCAN CLI: Using RT11Extract.exe CLI")
+                        cmd = [str(rt11_cli_exe), disk_file, '-o', str(scan_dir), '-v']
+                    else:
+                        self.log(f"DEBUG SCAN CLI: RT11Extract.exe not found in Windows package")
+                        self.root.after(0, lambda: self._scan_error("RT11Extract CLI not found in Windows package"))
+                        return
+                elif sys.platform == 'darwin':
+                    # macOS: NEVER use external CLI in bundle - should not reach here
+                    self.log(f"DEBUG SCAN CLI: ERROR - CLI fallback should not be used in macOS bundle")
+                    self.root.after(0, lambda: self._scan_error("CLI fallback not supported in macOS bundle - backend scan should have worked"))
+                    return
                 else:
-                    # Fallback: Use CLI path from helper
+                    # Linux: Use CLI path from helper
                     cli_path = get_rt11extract_cli_path()
                     if cli_path and cli_path.exists():
                         self.log(f"DEBUG SCAN CLI: Using CLI path: {cli_path}")
