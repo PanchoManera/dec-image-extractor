@@ -18,7 +18,47 @@ import sys
 from pathlib import Path
 
 # Import PyInstaller helper for path resolution
-from pyinstaller_helper import setup_backend_path, get_rt11extract_cli_path, get_imd2raw_path, is_frozen, get_script_dir
+try:
+    from pyinstaller_helper import setup_backend_path, get_rt11extract_cli_path, get_imd2raw_path, is_frozen, get_script_dir
+except ImportError:
+    # Fallback: create minimal helper functions if file not found
+    def setup_backend_path():
+        script_dir = Path(__file__).parent.parent.parent if not getattr(sys, 'frozen', False) else Path(sys.executable).parent
+        backend_path = script_dir / "backend"
+        if backend_path.exists() and str(backend_path) not in sys.path:
+            sys.path.insert(0, str(backend_path))
+        return backend_path
+    
+    def get_rt11extract_cli_path():
+        if getattr(sys, 'frozen', False):
+            exe_dir = Path(sys.executable).parent
+            if sys.platform.startswith('win'):
+                return exe_dir / "RT11Extract.exe"
+            elif sys.platform == 'darwin':
+                return exe_dir / "rt11extract_cli"
+            else:
+                return exe_dir / "RT11Extract"
+        else:
+            return Path(__file__).parent.parent.parent / "backend" / "extractors" / "rt11extract"
+    
+    def get_imd2raw_path():
+        if getattr(sys, 'frozen', False):
+            exe_dir = Path(sys.executable).parent
+            if sys.platform.startswith('win'):
+                return exe_dir / "imd2raw.exe"
+            else:
+                return exe_dir / "imd2raw"
+        else:
+            return Path(__file__).parent.parent.parent / "backend" / "image_converters" / "imd2raw.py"
+    
+    def is_frozen():
+        return getattr(sys, 'frozen', False)
+    
+    def get_script_dir():
+        if is_frozen():
+            return Path(sys.executable).parent
+        else:
+            return Path(__file__).parent.parent.parent
 
 # Setup backend path for imports
 backend_path = setup_backend_path()
