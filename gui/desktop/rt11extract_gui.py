@@ -113,7 +113,7 @@ class RT11ExtractGUI:
         main_frame.columnconfigure(1, weight=1)
         
         # File selection
-        file_frame = ttk.LabelFrame(main_frame, text="RT-11 Disk Image", padding="10")
+        file_frame = ttk.LabelFrame(main_frame, text="Select RT-11 Disk Image", padding="10")
         file_frame.grid(row=0, column=0, columnspan=2, sticky=(tk.W, tk.E), pady=(0, 10))
         file_frame.columnconfigure(1, weight=1)
         
@@ -121,6 +121,8 @@ class RT11ExtractGUI:
         ttk.Label(file_frame, text="File:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
         ttk.Entry(file_frame, textvariable=self.file_var, state="readonly").grid(row=0, column=1, sticky=(tk.W, tk.E))
         ttk.Button(file_frame, text="Browse...", command=self.browse_file).grid(row=0, column=2, padx=(5, 0))
+        self.scan_btn = ttk.Button(file_frame, text="Scan Image", command=self.scan_image, state="disabled")
+        self.scan_btn.grid(row=0, column=3, padx=(5, 0))
         
         # Progress
         progress_frame = ttk.Frame(main_frame)
@@ -146,7 +148,7 @@ class RT11ExtractGUI:
         self.files_tree.heading('Size', text='Size')
         self.files_tree.heading('Date', text='Date')
         
-        self.files_tree.column('Filename', width=250)
+        self.files_tree.column('Filename', width=350)  # Aumentar ancho para rutas más largas
         self.files_tree.column('Size', width=100)
         self.files_tree.column('Date', width=150)
         
@@ -234,11 +236,16 @@ class RT11ExtractGUI:
         if filename:
             self.current_file = filename
             self.file_var.set(filename)
-            self.scan_file()
+            self.scan_btn.config(state="normal")
     
-    def scan_file(self):
-        """Scan the selected file"""
-        if not self.current_file:
+    def scan_image(self):
+        """Scan the disk image for files"""
+        if not self.current_file or not os.path.exists(self.current_file):
+            messagebox.showerror("Error", "Please select a valid disk image file.")
+            return
+            
+        if not rt11extract_path.exists():
+            messagebox.showerror("Error", "rt11extract not found.")
             return
         
         # Reset UI
@@ -268,8 +275,8 @@ class RT11ExtractGUI:
             result = subprocess.run(cmd, **kwargs)
             
             if result.returncode == 0:
-                # Parse output directory
-                self._parse_output()
+                # Buscar archivos y directorios en el output
+                self._parse_extracted_files()
             else:
                 self.root.after(0, lambda: messagebox.showerror("Error", 
                     f"Failed to scan file (exit code {result.returncode})"))
@@ -280,21 +287,42 @@ class RT11ExtractGUI:
             self.root.after(0, lambda: self.progress_bar.stop())
             self.root.after(0, lambda: self.progress_var.set("Ready"))
     
-    def _parse_output(self):
-        """Parse scan output directory"""
+    def _parse_extracted_files(self):
+        """Parse the extracted files preserving directory structure"""
         if not self.temp_dir or not self.temp_dir.exists():
             return
-        
+
         files = []
+        # Primero procesar archivos
         for path in self.temp_dir.rglob('*'):
             if path.is_file():
+                # Calcular ruta relativa desde temp_dir para preservar estructura
+                rel_path = path.relative_to(self.temp_dir)
+                display_name = str(rel_path)  # Mostrar ruta completa para preservar estructura
+                
                 size = path.stat().st_size
                 date = datetime.fromtimestamp(path.stat().st_mtime)
+                
                 files.append({
-                    'name': path.name,
+                    'name': display_name,
                     'size': f"{size:,} bytes",
                     'date': date.strftime("%Y-%m-%d %H:%M:%S"),
-                    'path': path
+                    'path': path,
+                    'type': 'file'
+                })
+        
+        # Luego procesar directorios para mantenerlos al final
+        for path in self.temp_dir.rglob('*'):
+            if path.is_dir():
+                rel_path = path.relative_to(self.temp_dir)
+                display_name = str(rel_path) + '/'  # Agregar / para indicar directorio
+                
+                files.append({
+                    'name': display_name,
+                    'size': '',  # Los directorios no tienen tamaño
+                    'date': '',   # Fecha vacía para directorios
+                    'path': path,
+                    'type': 'directory'
                 })
         
         # Update UI
