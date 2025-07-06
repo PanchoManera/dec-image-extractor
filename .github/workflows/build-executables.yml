@@ -118,30 +118,21 @@ jobs:
         # Copy documentation
         cp README.md RT11Extractor-macOS-universal/
         # Create macOS-specific README
-        cat > RT11Extractor-macOS-universal/README_macOS.txt << 'EOF'
-RT-11 Extractor para macOS universal
-
-Contenido del paquete:
-- RT11Extract.app (Aplicacion GUI completa con TODO el backend integrado)
-- rt11extract_cli (CLI extractor universal)
-- imd2raw (Conversor ImageDisk a DSK/RAW)
-
-Uso:
-- Hacer doble clic en RT11Extract.app para abrir la interfaz grafica
-- Desde Terminal:
-  ./rt11extract_cli imagen.dsk -o carpeta/ (extractor)
-  ./imd2raw imagen.imd imagen.dsk (conversor)
-
-La aplicacion .app incluye TODOS los extractores y convertidores del backend.
-No necesita archivos adicionales para funcionar.
-
-Soporta:
-- RT-11 filesystems
-- Unix PDP-11 filesystems  
-- ODS-1/Files-11 (RSX-11, VMS)
-- Conversion IMD a DSK/RAW
-- Auto-deteccion de tipo de filesystem
-EOF
+        echo "RT-11 Extractor para macOS universal" > RT11Extractor-macOS-universal/README_macOS.txt
+        echo "" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "Contenido del paquete:" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "- RT11Extract.app (Aplicacion GUI completa con TODO el backend integrado)" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "- rt11extract_cli (CLI extractor universal)" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "Uso:" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "- Hacer doble clic en RT11Extract.app para abrir la interfaz grafica" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "- Desde Terminal:" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "  ./rt11extract_cli imagen.dsk -o carpeta/ (extractor)" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "  ./imd2raw imagen.imd imagen.dsk (conversor)" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "" >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "La aplicacion .app incluye TODOS los extractores y convertidores del backend." >> RT11Extractor-macOS-universal/README_macOS.txt
+        echo "No necesita archivos adicionales para funcionar." >> RT11Extractor-macOS-universal/README_macOS.txt
     
     - name: Upload macOS artifacts
       uses: actions/upload-artifact@v4
@@ -201,33 +192,20 @@ EOF
         # Copy documentation
         cp README.md RT11Extractor-Linux-x64/
         # Create Linux-specific README
-        cat > RT11Extractor-Linux-x64/README_Linux.txt << 'EOF'
-RT-11 Extractor para Linux x64
-
-Ejecutables incluidos:
-- RT11ExtractGUI (Interfaz grafica completa con TODO el backend integrado)
-- RT11Extract (CLI extractor universal)
-- imd2raw (Conversor ImageDisk a DSK/RAW)
-
-Uso:
-./RT11ExtractGUI (interfaz grafica)
-./RT11Extract imagen.dsk -o carpeta/ (extractor)
-./imd2raw imagen.imd imagen.dsk (conversor)
-
-Requisitos:
-- Para la interfaz grafica se requiere un entorno grafico con soporte Tkinter
-- Los ejecutables CLI funcionan en cualquier terminal
-
-La GUI incluye TODOS los extractores y convertidores del backend integrados.
-No necesita archivos adicionales para funcionar.
-
-Soporta:
-- RT-11 filesystems
-- Unix PDP-11 filesystems
-- ODS-1/Files-11 (RSX-11, VMS)
-- Conversion IMD a DSK/RAW
-- Auto-deteccion de tipo de filesystem
-EOF
+        echo "RT-11 Extractor para Linux x64" > RT11Extractor-Linux-x64/README_Linux.txt
+        echo "" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "Ejecutables incluidos:" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "- RT11ExtractGUI (Interfaz grafica completa con TODO el backend integrado)" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "- RT11Extract (CLI extractor universal)" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "Uso:" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "./RT11ExtractGUI (interfaz grafica)" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "./RT11Extract imagen.dsk -o carpeta/ (extractor)" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "./imd2raw imagen.imd imagen.dsk (conversor)" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "" >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "La GUI incluye TODOS los extractores y convertidores del backend integrados." >> RT11Extractor-Linux-x64/README_Linux.txt
+        echo "No necesita archivos adicionales para funcionar." >> RT11Extractor-Linux-x64/README_Linux.txt
     
     - name: Upload Linux artifacts
       uses: actions/upload-artifact@v4
