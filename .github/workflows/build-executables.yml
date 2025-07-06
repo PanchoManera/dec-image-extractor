@@ -30,8 +30,8 @@ jobs:
       run: |
         $env:PYTHONPATH = "."
         
-        # 1. Build CLI extractor (main wrapper)
-        pyinstaller --onefile --name "RT11Extract" --paths="backend" --paths="." --add-data "backend;backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" backend/extractors/rt11extract
+        # 1. Build CLI extractor (main wrapper) - exclude problematic symlinks
+        pyinstaller --onefile --name "RT11Extract" --paths="backend" --paths="." --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" backend/extractors/rt11extract
         
         # 2. Build IMD converter
         pyinstaller --onefile --name "imd2raw" --paths="backend" --paths="." backend/image_converters/imd2raw.py

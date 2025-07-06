@@ -1327,11 +1327,21 @@ class RT11ExtractGUI:
             
     def show_startup_warning(self):
         """Show startup warning about filesystem mounting development status"""
+        # DEBUG: Log every call to this function
+        import traceback
+        self.log("DEBUG: show_startup_warning() called!")
+        self.log(f"DEBUG: startup_warning_shown = {getattr(self, 'startup_warning_shown', False)}")
+        self.log("DEBUG: Call stack:")
+        for line in traceback.format_stack()[-5:]:
+            self.log(f"DEBUG: {line.strip()}")
+            
         # Only show once per session
         if self.startup_warning_shown:
+            self.log("DEBUG: Warning already shown, returning")
             return
             
         self.startup_warning_shown = True
+        self.log("DEBUG: Showing startup warning dialog")
         
         warning_text = """RT-11 Extract GUI - Filesystem Mounting Status
 
