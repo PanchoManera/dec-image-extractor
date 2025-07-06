@@ -1,23 +1,36 @@
 # RT-11 Extractor
 
-Complete toolkit for extracting files from RT-11 disk images and converting ImageDisk (IMD) files with modern GUI and command-line interfaces.
+Complete toolkit for extracting files from RT-11 disk images and other historical filesystem formats with modern GUI and command-line interfaces.
 
 ## 🖥️ **What is RT-11?**
 
-RT-11 was a real-time operating system developed by Digital Equipment Corporation (DEC) for the PDP-11 family of computers. This tool helps extract files from RT-11 disk images.
+RT-11 was a real-time operating system developed by Digital Equipment Corporation (DEC) for the PDP-11 family of computers. This tool helps extract files from RT-11 disk images and other historical formats.
 
 ## 📦 **Project Components**
 
-### Core Tools
-- **`rt11extract`** - Command-line RT-11 extraction engine
+### Core Extraction Tools
+- **`rt11extract`** - Enhanced RT-11 extraction engine
+- **`rt11extract_universal`** - Universal extractor supporting multiple formats
+- **`universal_extractor.py`** - Python-based universal extraction engine
+
+### Image Converters
 - **`imd2raw.py`** - ImageDisk (IMD) to DSK/RAW converter
+
+### User Interfaces
 - **`rt11extract_gui.py`** - Desktop GUI application with IMD support and filesystem mounting
-- **`rt11extract_simple.py`** - Web-based interface
+- **Web interface** - Browser-based extraction tool
+
+### Filesystem Support
+- **RT-11** - Complete RT-11 filesystem extraction
+- **Unix V5/V6** - Early Unix filesystem support
+- **RSX-11 (ODS-1)** - Digital's RSX-11 filesystem
+- **PDP-8 OS/8** - PDP-8 operating system support
+- **Unix PDP-11** - Unix on PDP-11 systems
 
 ### Filesystem Mounting
-- **`rt11_fuse.sh`** - FUSE driver for macOS/Linux filesystem mounting
-- **`rt11_mount.bat`** - WinFsp driver for Windows filesystem mounting
-- **Standalone executables** - Platform-specific compiled drivers included in releases
+- **FUSE drivers** - Mount as local filesystem (macOS/Linux)
+- **WinFsp drivers** - Mount as drive letter (Windows)
+- **Standalone executables** - Platform-specific compiled drivers
 
 ## 🚀 **Quick Start**
 
@@ -178,11 +191,43 @@ ln -sf ../extractors/universal_extractor.py pdp11_smart_extractor.py
 
 These links allow the FUSE driver to locate the extraction engines.
 
-### Architecture
-- **rt11extract** - Core extraction engine with RT-11 filesystem parser
-- **imd2raw** - ImageDisk format converter (ported from C)
-- **GUI application** - Tkinter-based desktop interface with IMD support
-- **Web interface** - HTTP server with HTML5 interface
+### Project Structure
+
+The project is organized into a modular backend architecture:
+
+```
+backend/
+├── extractors/           # Core extraction engines
+│   ├── rt11extract       # Enhanced RT-11 extractor
+│   ├── rt11extract_universal  # Universal multi-format extractor
+│   └── universal_extractor.py # Python-based universal engine
+├── filesystems/          # Filesystem-specific modules
+│   ├── ods1_extractor.py     # RSX-11 ODS-1 support
+│   ├── unix_pdp11_extractor.py # Unix on PDP-11
+│   └── ods1_complete_extractor.py # Complete ODS-1 implementation
+├── image_converters/     # Image format converters
+│   └── imd2raw.py       # ImageDisk to DSK/RAW converter
+├── filesystem_mount/     # FUSE and WinFsp drivers
+│   ├── rt11_fuse.py     # FUSE driver for Unix-like systems
+│   ├── rt11_winfsp.py   # WinFsp driver for Windows
+│   └── rt11_fuse_complete.py # Complete FUSE implementation
+└── utils/               # Shared utilities
+    └── radix50_interactivo.py # Radix-50 encoding tools
+
+gui/
+└── desktop/             # Desktop GUI application
+    └── rt11extract_gui.py
+
+pdp8_project/            # PDP-8 OS/8 support
+└── final_os8_extractor.py # OS/8 filesystem extractor
+```
+
+### Architecture Components
+- **Modular backend** - Organized by functionality for maintainability
+- **Universal extractors** - Support multiple historical filesystem formats
+- **Pluggable filesystem modules** - Easy addition of new filesystem types
+- **Cross-platform mounting** - Unified interface for FUSE and WinFsp
+- **Clean separation** - GUI, CLI, and web interfaces use same backend
 
 ## 📚 **Technical References**
 
