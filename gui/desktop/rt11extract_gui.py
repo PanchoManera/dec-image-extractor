@@ -17,11 +17,19 @@ import webbrowser
 import sys
 from pathlib import Path
 
-# Add backend path to Python path for imports
-backend_path = Path(__file__).parent.parent.parent / "backend"
-sys.path.insert(0, str(backend_path))
+# Import PyInstaller helper for path resolution
+from pyinstaller_helper import setup_backend_path, get_rt11extract_cli_path, get_imd2raw_path, is_frozen, get_script_dir
 
-from image_converters.imd2raw import IMDConverter, DiskImageValidator
+# Setup backend path for imports
+backend_path = setup_backend_path()
+
+# Try to import backend modules
+try:
+    from image_converters.imd2raw import IMDConverter, DiskImageValidator
+except ImportError:
+    # Fallback if direct import fails
+    IMDConverter = None
+    DiskImageValidator = None
 
 # Windows-specific imports for hiding console
 if sys.platform == "win32":
@@ -32,50 +40,10 @@ else:
     CREATE_NO_WINDOW = 0
     DETACHED_PROCESS = 0
 
-# Global variables
-import sys
-
-# Determine if running as script or frozen exe
-if getattr(sys, 'frozen', False):
-    # Running as compiled executable - look in same directory as executable
-    script_dir = Path(sys.executable).parent
-    # Check for different executable names based on platform
-    if sys.platform.startswith('win'):
-        rt11extract_path = script_dir / "RT11Extract.exe"
-    elif sys.platform == 'darwin':  # macOS
-        # In macOS bundle, the GUI is inside .app/Contents/MacOS/, but CLI might be in different locations
-        if str(script_dir).endswith('.app/Contents/MacOS'):
-            # We're inside a .app bundle, try multiple locations for CLI
-            possible_cli_paths = [
-                script_dir / "rt11extract_cli",  # Inside the .app bundle (preferred)
-                script_dir.parent.parent.parent / "rt11extract_cli",  # In parent directory of .app
-            ]
-            
-            # Find the first existing CLI executable
-            rt11extract_path = None
-            for path in possible_cli_paths:
-                if path.exists():
-                    rt11extract_path = path
-                    break
-            
-            # If not found, default to the preferred location (inside bundle)
-            if rt11extract_path is None:
-                rt11extract_path = script_dir / "rt11extract_cli"
-        else:
-            # Not in .app bundle, look in same directory
-            rt11extract_path = script_dir / "rt11extract_cli"
-    else:
-        rt11extract_path = script_dir / "RT11Extract"
-else:
-    # Running as script
-    # Resolve symlink first, then calculate script directory
-    actual_script_path = Path(__file__).resolve()
-    script_dir = actual_script_path.parent.parent.parent  # Go up to root from gui/desktop/
-    # Check for different executable names based on platform
-    if sys.platform.startswith('win'):
-        rt11extract_path = script_dir / "backend" / "extractors" / "RT11Extract.exe"
-    else:
-        rt11extract_path = script_dir / "backend" / "extractors" / "rt11extract"
+# Global variables - use PyInstaller helper for path resolution
+rt11extract_path = get_rt11extract_cli_path()
+imd2raw_path = get_imd2raw_path()
+script_dir = get_script_dir()
 
 class RT11ExtractGUI:
     def __init__(self, root):

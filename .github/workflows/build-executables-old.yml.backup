@@ -1,0 +1,339 @@
+name: Build RT-11 Extractor Executables
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Permite ejecutar manualmente
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [x64]  # Only build x64 for now to simplify
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        architecture: 'x64'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller pillow
+    
+    - name: Build all executables with complete backend
+      run: |
+        $env:PYTHONPATH = "."
+        
+        # 1. Build main CLI extractor (rt11extract wrapper)
+        pyinstaller --onefile --name "rt11extract" --paths="backend" --paths="." --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" backend/extractors/rt11extract
+        
+        # 2. Build IMD to DSK converter
+        pyinstaller --onefile --name "imd2raw" --paths="backend" --paths="." backend/image_converters/imd2raw.py
+        
+        # 3. Build GUI with ALL backend components embedded
+        if (Test-Path "icon.png") {
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend;backend" --add-data "icon.png;." --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" gui/desktop/rt11extract_gui.py
+        } else {
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend;backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" gui/desktop/rt11extract_gui.py
+        }
+    
+    - name: Create Windows package
+      run: |
+        mkdir RT11Extractor-Windows-${{ matrix.arch }}
+        # Only copy files that were actually built
+        if (Test-Path "dist\RT11ExtractGUI.exe") { copy dist\RT11ExtractGUI.exe RT11Extractor-Windows-${{ matrix.arch }}\ }
+        if (Test-Path "README.md") { copy README.md RT11Extractor-Windows-${{ matrix.arch }}\ }
+        echo "RT-11 Extractor para Windows ${{ matrix.arch }}" > RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "Ejecutables incluidos:" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "- RT11ExtractGUI.exe (Interfaz gráfica)" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+        echo "Para usar la interfaz gráfica, ejecute RT11ExtractGUI.exe" >> RT11Extractor-Windows-${{ matrix.arch }}\README_Windows.txt
+    
+    - name: Upload Windows artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: RT11Extractor-Windows-${{ matrix.arch }}
+        path: RT11Extractor-Windows-${{ matrix.arch }}/
+
+  build-macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [universal]  # Single universal build for all Mac architectures
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller pillow
+        # Install FUSE dependencies for macOS (optional, may fail on some systems)
+        pip install fusepy || echo "fusepy not available on this system"
+        pip install refuse || echo "refuse not available on this system"
+    
+    - name: Build executable with PyInstaller
+      run: |
+        # Build native architecture without cross-compilation
+        # Create .app bundle for GUI and standalone executables for CLI tools
+        if [ -f "icon.png" ]; then
+          pyinstaller --onedir --windowed --name "RT11Extract" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." rt11extract_gui.py
+        else
+          pyinstaller --onedir --windowed --name "RT11Extract" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." rt11extract_gui.py
+        fi
+        # CLI tools as standalone executables
+        pyinstaller --onefile --name "rt11extract_cli" rt11extract
+        pyinstaller --onefile --name "imd2raw" imd2raw.py
+        # Try to build FUSE driver (optional)
+        pyinstaller --onefile --name "rt11_fuse" rt11_fuse_complete.py || echo "FUSE driver build failed - continuing without it"
+    
+    - name: Create macOS package
+      run: |
+        mkdir RT11Extractor-macOS-${{ matrix.arch }}
+        # Copy the .app bundle
+        cp -r "dist/RT11Extract.app" RT11Extractor-macOS-${{ matrix.arch }}/
+        # Copy CLI tools to both locations for compatibility
+        cp dist/rt11extract_cli RT11Extractor-macOS-${{ matrix.arch }}/
+        # IMPORTANT: Also copy CLI inside the .app bundle so GUI can find it
+        cp dist/rt11extract_cli "RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract.app/Contents/MacOS/rt11extract_cli"
+        cp dist/imd2raw RT11Extractor-macOS-${{ matrix.arch }}/
+        # Copy FUSE driver if built successfully
+        [ -f "dist/rt11_fuse" ] && cp dist/rt11_fuse RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse executable not available"
+        # Copy FUSE files if they exist
+        [ -f "rt11_fuse.py" ] && cp rt11_fuse.py RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse.py not found"
+        [ -f "rt11_fuse.sh" ] && cp rt11_fuse.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse.sh not found"
+        [ -f "rt11_fuse_complete.py" ] && cp rt11_fuse_complete.py RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse_complete.py not found"
+        [ -f "rt11_fuse_wrapper.sh" ] && cp rt11_fuse_wrapper.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "rt11_fuse_wrapper.sh not found"
+        [ -f "setup_fuse.sh" ] && cp setup_fuse.sh RT11Extractor-macOS-${{ matrix.arch }}/ || echo "setup_fuse.sh not found"
+        # IMPORTANT: Also copy FUSE files inside the .app bundle so GUI can find them
+        [ -f "dist/rt11_fuse" ] && cp dist/rt11_fuse "RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract.app/Contents/Resources/" || echo "rt11_fuse executable not available for app bundle"
+        [ -f "rt11_fuse_wrapper.sh" ] && cp rt11_fuse_wrapper.sh "RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract.app/Contents/Resources/" || echo "rt11_fuse_wrapper.sh not found for app bundle"
+        [ -f "rt11_fuse_complete.py" ] && cp rt11_fuse_complete.py "RT11Extractor-macOS-${{ matrix.arch }}/RT11Extract.app/Contents/Resources/" || echo "rt11_fuse_complete.py not found for app bundle"
+        # Set permissions for CLI tools
+        chmod +x RT11Extractor-macOS-${{ matrix.arch }}/rt11extract_cli
+        chmod +x RT11Extractor-macOS-${{ matrix.arch }}/imd2raw
+        # Make FUSE executables and scripts executable
+        [ -f "RT11Extractor-macOS-${{ matrix.arch }}/rt11_fuse" ] && chmod +x RT11Extractor-macOS-${{ matrix.arch }}/rt11_fuse
+        [ -f "RT11Extractor-macOS-${{ matrix.arch }}/rt11_fuse_wrapper.sh" ] && chmod +x RT11Extractor-macOS-${{ matrix.arch }}/rt11_fuse_wrapper.sh
+        [ -f "RT11Extractor-macOS-${{ matrix.arch }}/setup_fuse.sh" ] && chmod +x RT11Extractor-macOS-${{ matrix.arch }}/setup_fuse.sh
+        # The .app bundle already has correct permissions
+        cp README.md RT11Extractor-macOS-${{ matrix.arch }}/
+        echo "RT-11 Extractor para macOS ${{ matrix.arch }}" > RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "Ejecutables incluidos:" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "- RT11Extract.app (Aplicación GUI con soporte IMD y macFUSE)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "- rt11extract_cli (Extractor línea de comandos)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "Uso:" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "- Hacer doble clic en RT11Extract.app para abrir la interfaz gráfica" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "- Desde Terminal:" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "  ./rt11extract_cli imagen.dsk -o carpeta/ (extractor)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "  ./imd2raw imagen.imd imagen.dsk (conversor)" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "Para montaje de sistema de archivos (macFUSE):" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "1. Instale macFUSE desde https://osxfuse.github.io/" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "2. Ejecute ./setup_fuse.sh para configurar" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+        echo "3. Use el botón 'Mount as Filesystem' en la GUI" >> RT11Extractor-macOS-${{ matrix.arch }}/README_macOS.txt
+    
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: RT11Extractor-macOS-${{ matrix.arch }}
+        path: RT11Extractor-macOS-${{ matrix.arch }}/
+
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [x64, arm64]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y python3-tk libfuse-dev
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pyinstaller pillow
+        # Install FUSE dependencies for Linux (optional, may fail on some systems)
+        pip install fusepy || echo "fusepy not available on this system"
+        pip install refuse || echo "refuse not available on this system"
+    
+    - name: Build executable with PyInstaller
+      run: |
+        if [ "${{ matrix.arch }}" = "arm64" ]; then
+          # Para ARM64 en Linux necesitamos emulación o cross-compilation
+          # Por simplicidad, solo construimos para x64 por ahora
+          echo "ARM64 build skipped for Linux in this workflow"
+          exit 0
+        else
+          if [ -f "icon.png" ]; then
+            pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse rt11extract_gui.py || pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --add-data "icon.png:." rt11extract_gui.py
+          else
+            pyinstaller --onefile --name "RT11ExtractGUI" --add-data "rt11_fuse.py:." --add-data "rt11_fuse.sh:." --add-data "rt11_fuse_complete.py:." --add-data "setup_fuse.sh:." --hidden-import=fuse --hidden-import=refuse rt11extract_gui.py || pyinstaller --onefile --name "RT11ExtractGUI" rt11extract_gui.py
+          fi
+          pyinstaller --onefile --name "RT11Extract" rt11extract
+          pyinstaller --onefile --name "imd2raw" imd2raw.py
+          # Try to build FUSE driver (optional)
+          pyinstaller --onefile --name "rt11_fuse" rt11_fuse_complete.py || echo "FUSE driver build failed for Linux"
+        fi
+    
+    - name: Create Linux package
+      if: matrix.arch == 'x64'
+      run: |
+        mkdir RT11Extractor-Linux-${{ matrix.arch }}
+        cp dist/RT11ExtractGUI RT11Extractor-Linux-${{ matrix.arch }}/
+        cp dist/RT11Extract RT11Extractor-Linux-${{ matrix.arch }}/
+        cp dist/imd2raw RT11Extractor-Linux-${{ matrix.arch }}/
+        # Copy FUSE driver if built successfully
+        [ -f "dist/rt11_fuse" ] && cp dist/rt11_fuse RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse executable not available"
+        # Copy FUSE files if they exist
+        [ -f "rt11_fuse.py" ] && cp rt11_fuse.py RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse.py not found"
+        [ -f "rt11_fuse.sh" ] && cp rt11_fuse.sh RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse.sh not found"
+        [ -f "rt11_fuse_complete.py" ] && cp rt11_fuse_complete.py RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse_complete.py not found"
+        [ -f "rt11_fuse_wrapper.sh" ] && cp rt11_fuse_wrapper.sh RT11Extractor-Linux-${{ matrix.arch }}/ || echo "rt11_fuse_wrapper.sh not found"
+        [ -f "setup_fuse.sh" ] && cp setup_fuse.sh RT11Extractor-Linux-${{ matrix.arch }}/ || echo "setup_fuse.sh not found"
+        chmod +x RT11Extractor-Linux-${{ matrix.arch }}/RT11ExtractGUI
+        chmod +x RT11Extractor-Linux-${{ matrix.arch }}/RT11Extract
+        chmod +x RT11Extractor-Linux-${{ matrix.arch }}/imd2raw
+        # Make FUSE executables and scripts executable
+        [ -f "RT11Extractor-Linux-${{ matrix.arch }}/rt11_fuse" ] && chmod +x RT11Extractor-Linux-${{ matrix.arch }}/rt11_fuse
+        [ -f "RT11Extractor-Linux-${{ matrix.arch }}/rt11_fuse_wrapper.sh" ] && chmod +x RT11Extractor-Linux-${{ matrix.arch }}/rt11_fuse_wrapper.sh
+        [ -f "RT11Extractor-Linux-${{ matrix.arch }}/setup_fuse.sh" ] && chmod +x RT11Extractor-Linux-${{ matrix.arch }}/setup_fuse.sh
+        cp README.md RT11Extractor-Linux-${{ matrix.arch }}/
+        echo "RT-11 Extractor para Linux ${{ matrix.arch }}" > RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "Ejecutables incluidos:" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- RT11ExtractGUI (Interfaz gráfica con soporte IMD y FUSE)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- RT11Extract (Extractor línea de comandos)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- imd2raw (Conversor ImageDisk a DSK/RAW)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "Uso:" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "./RT11ExtractGUI (interfaz gráfica)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "./RT11Extract imagen.dsk -o carpeta/ (extractor)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "./imd2raw imagen.imd imagen.dsk (conversor)" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "Requisitos:" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- Para la interfaz gráfica se requiere un entorno gráfico con soporte Tkinter" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "- Los ejecutables de línea de comandos funcionan en cualquier terminal" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "Para montaje de sistema de archivos (FUSE):" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "1. Instale libfuse-dev: sudo apt-get install libfuse-dev" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "2. Ejecute ./setup_fuse.sh para configurar" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+        echo "3. Use el botón 'Mount as Filesystem' en la GUI" >> RT11Extractor-Linux-${{ matrix.arch }}/README_Linux.txt
+    
+    - name: Upload Linux artifacts
+      if: matrix.arch == 'x64'
+      uses: actions/upload-artifact@v4
+      with:
+        name: RT11Extractor-Linux-${{ matrix.arch }}
+        path: RT11Extractor-Linux-${{ matrix.arch }}/
+
+  create-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: .
+    
+    - name: Create release packages
+      run: |
+        # Crear archivos ZIP para cada plataforma
+        for dir in RT11Extractor-*/; do
+          if [ -d "$dir" ]; then
+            zip -r "${dir%/}.zip" "$dir"
+          fi
+        done
+        ls -la *.zip
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          *.zip
+        draft: false
+        prerelease: false
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-summary:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: .
+      continue-on-error: true
+    
+    - name: List all built executables
+      run: |
+        echo "# RT-11 Extractor Build Summary" > BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "## Ejecutables construidos:" >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        
+        for dir in RT11Extractor-*/; do
+          if [ -d "$dir" ]; then
+            echo "### $dir" >> BUILD_SUMMARY.md
+            ls -la "$dir" >> BUILD_SUMMARY.md
+            echo "" >> BUILD_SUMMARY.md
+          fi
+        done
+        
+        echo "## Archivos disponibles para descarga:" >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Ejecutables Windows (.exe):" >> BUILD_SUMMARY.md
+        find . -name "*.exe" -type f | grep RT11Extract | sort >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Ejecutables macOS:" >> BUILD_SUMMARY.md
+        find ./RT11Extractor-macOS-* -name "RT11Extract*" -type f 2>/dev/null | sort >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Ejecutables Linux:" >> BUILD_SUMMARY.md
+        find ./RT11Extractor-Linux-* -name "RT11Extract*" -type f 2>/dev/null | sort >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Todos los archivos RT11Extract:" >> BUILD_SUMMARY.md
+        find . -name "RT11Extract*" -type f | sort >> BUILD_SUMMARY.md
+        echo "" >> BUILD_SUMMARY.md
+        echo "### Archivos imd2raw:" >> BUILD_SUMMARY.md
+        find . -name "imd2raw*" -type f | sort >> BUILD_SUMMARY.md
+        
+        cat BUILD_SUMMARY.md
+    
+    - name: Upload build summary
+      uses: actions/upload-artifact@v4
+      with:
+        name: BUILD_SUMMARY
+        path: BUILD_SUMMARY.md
