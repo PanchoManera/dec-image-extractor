@@ -563,23 +563,45 @@ class RT11ExtractGUI:
         """Fallback method using CLI when backend import fails"""
         self.log("Using CLI fallback method")
         
+        # DEBUG: Log detailed execution context
+        self.log(f"DEBUG SCAN CLI: sys.frozen = {getattr(sys, 'frozen', False)}")
+        self.log(f"DEBUG SCAN CLI: sys.executable = {sys.executable}")
+        self.log(f"DEBUG SCAN CLI: backend_path = {backend_path}")
+        self.log(f"DEBUG SCAN CLI: script_dir = {script_dir}")
+        
         # Build command - but ensure we don't open GUI
         # When frozen, NEVER use external CLI as it might open another GUI
         # Always use the backend script directly
         backend_script = backend_path / 'extractors' / 'rt11extract' if backend_path else None
+        self.log(f"DEBUG SCAN CLI: backend_script path = {backend_script}")
+        self.log(f"DEBUG SCAN CLI: backend_script exists = {backend_script.exists() if backend_script else False}")
+        
         if backend_script and backend_script.exists():
             cmd = [sys.executable, str(backend_script), disk_file, '-o', str(scan_dir), '-v']
+            self.log(f"DEBUG SCAN CLI: Using backend_script command")
         else:
             # Last resort: try to find universal extractor
             universal_script = backend_path / 'extractors' / 'universal_extractor.py' if backend_path else None
+            self.log(f"DEBUG SCAN CLI: universal_script path = {universal_script}")
+            self.log(f"DEBUG SCAN CLI: universal_script exists = {universal_script.exists() if universal_script else False}")
             if universal_script and universal_script.exists():
                 cmd = [sys.executable, str(universal_script), disk_file, '-o', str(scan_dir), '-v']
+                self.log(f"DEBUG SCAN CLI: Using universal_script command")
             else:
+                self.log(f"DEBUG SCAN CLI: No extractor found!")
                 raise FileNotFoundError("No extractor available")
+        
+        self.log(f"DEBUG SCAN CLI: Final command = {cmd}")
+        self.log(f"DEBUG SCAN CLI: Command length = {len(cmd)}")
+        for i, part in enumerate(cmd):
+            self.log(f"DEBUG SCAN CLI: cmd[{i}] = '{part}'")
+        
+        subprocess_kwargs = self._get_subprocess_kwargs()
+        self.log(f"DEBUG SCAN CLI: subprocess kwargs = {subprocess_kwargs}")
         
         self.log(f"Running CLI: {' '.join(cmd)}")
         
-        result = subprocess.run(cmd, **self._get_subprocess_kwargs())
+        result = subprocess.run(cmd, **subprocess_kwargs)
         
         if result.stdout:
             self.log("CLI STDOUT:")
