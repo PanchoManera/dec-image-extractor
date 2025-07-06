@@ -39,11 +39,11 @@ jobs:
         # 3. Build GUI - CRITICAL FIX: Use backend directly, skip problematic filesystem_mount
         Write-Host "Building Windows GUI with simplified backend..."
         
-        # Build GUI directly with backend, but exclude filesystem_mount directory to avoid symlink errors
+        # CRITICAL: Skip image_converters due to symlinks, only extractors and filesystems
         if (Test-Path "icon.png") {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend/extractors;backend/extractors" --add-data "backend/image_converters;backend/image_converters" --add-data "backend/filesystems;backend/filesystems" --add-data "icon.png;." --hidden-import="tkinter" --hidden-import="PIL" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.extractors.universal_extractor" --hidden-import="backend.extractors.rt11extract_smart" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --add-data "icon.png;." --hidden-import="tkinter" --hidden-import="PIL" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" --hidden-import="backend.extractors.universal_extractor" --hidden-import="backend.extractors.rt11extract_smart" gui/desktop/rt11extract_gui.py
         } else {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend/extractors;backend/extractors" --add-data "backend/image_converters;backend/image_converters" --add-data "backend/filesystems;backend/filesystems" --hidden-import="tkinter" --hidden-import="PIL" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.extractors.universal_extractor" --hidden-import="backend.extractors.rt11extract_smart" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --hidden-import="tkinter" --hidden-import="PIL" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" --hidden-import="backend.extractors.universal_extractor" --hidden-import="backend.extractors.rt11extract_smart" gui/desktop/rt11extract_gui.py
         }
     
     - name: Create Windows package
