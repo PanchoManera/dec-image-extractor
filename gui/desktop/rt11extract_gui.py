@@ -32,32 +32,93 @@ def setup_backend_path():
 def get_rt11extract_cli_path():
     """Get path to rt11extract CLI tool"""
     if getattr(sys, 'frozen', False):
-        if sys.platform == 'win32':
-            # Windows: use RT11Extract.exe in same directory
-            return Path(sys.executable).parent / "RT11Extract.exe"
+        # En modo frozen/bundle
+        exe_dir = Path(sys.executable).parent
+        
+        if sys.platform.startswith('win'):
+            # Windows: Try all possible CLI executables in same directory
+            cli_options = [
+                "RT11Extract.exe",            # Main CLI
+                "rt11extract_universal.exe",  # Universal extractor
+                "rt11extract_cli.exe"        # Alternative name
+            ]
+            
+            for cli in cli_options:
+                cli_path = exe_dir / cli
+                if cli_path.exists():
+                    return cli_path
+                    
         elif sys.platform == 'darwin':
-            # macOS: Check bundle/cli/ directory
-            exe_path = Path(sys.executable)
-            cli_dir = exe_path.parent.parent / "cli"
-            if cli_dir.exists():
-                return cli_dir / "rt11extract_cli"
-    # Default: Use rt11extract in backend
-    return Path(__file__).parent.parent.parent / "backend" / "extractors" / "rt11extract"
+            # macOS: CLI debe estar en Contents/cli/ del bundle
+            bundle_cli_dir = exe_dir.parent / "cli"  # Contents/MacOS/../cli
+            if bundle_cli_dir.exists():
+                cli_options = [
+                    "rt11extract_cli",       # Nombre principal
+                    "rt11extract",           # Alternativo
+                    "RT11Extract"           # Alternativo
+                ]
+                
+                for cli in cli_options:
+                    cli_path = bundle_cli_dir / cli
+                    if cli_path.exists():
+                        # Asegurar que sea ejecutable
+                        cli_path.chmod(cli_path.stat().st_mode | 0o755)
+                        return cli_path
+                        
+            # Si no está en el bundle, es un error en macOS frozen
+            print(f"ERROR: CLI not found in bundle at {bundle_cli_dir}")
+            return None
+            
+    # Default: Try relative to script location
+    script_paths = [
+        Path(__file__).parent.parent.parent / "backend" / "extractors" / "rt11extract",
+        Path.cwd() / "backend" / "extractors" / "rt11extract"
+    ]
+    
+    for path in script_paths:
+        if path.exists():
+            return path
+            
+    # Last resort: Try current directory
+    return Path.cwd() / "rt11extract"
 
 def get_imd2raw_path():
     """Get path to imd2raw tool"""
     if getattr(sys, 'frozen', False):
+        exe_dir = Path(sys.executable).parent
+        
         if sys.platform == 'win32':
-            # Windows: use imd2raw.exe in same directory
-            return Path(sys.executable).parent / "imd2raw.exe"
+            # Windows: imd2raw.exe en mismo directorio que GUI
+            imd_path = exe_dir / "imd2raw.exe"
+            if imd_path.exists():
+                return imd_path
         elif sys.platform == 'darwin':
-            # macOS: Check bundle/cli/ directory
-            exe_path = Path(sys.executable)
-            cli_dir = exe_path.parent.parent / "cli"
-            if cli_dir.exists():
-                return cli_dir / "imd2raw"
-    # Default: Use imd2raw.py in backend
-    return Path(__file__).parent.parent.parent / "backend" / "image_converters" / "imd2raw.py"
+            # macOS: imd2raw debe estar en Contents/cli/
+            bundle_cli_dir = exe_dir.parent / "cli"
+            if bundle_cli_dir.exists():
+                cli_options = [
+                    "imd2raw",    # Nombre principal
+                    "IMD2RAW",    # Alternativo
+                    "imd2dsk"     # Alternativo
+                ]
+                
+                for cli in cli_options:
+                    cli_path = bundle_cli_dir / cli
+                    if cli_path.exists():
+                        # Asegurar que sea ejecutable
+                        cli_path.chmod(cli_path.stat().st_mode | 0o755)
+                        return cli_path
+                        
+            # Si no está en el bundle, es un error en macOS frozen
+            print(f"ERROR: IMD2RAW not found in bundle at {bundle_cli_dir}")
+            return None
+    else:
+        # En modo desarrollo
+        imd_path = Path(__file__).parent.parent.parent / "backend" / "image_converters" / "imd2raw.py"
+        if imd_path.exists():
+            return imd_path
+    
+    return None  # No encontrado
 
 # Initialize paths
 backend_path = setup_backend_path()
@@ -83,6 +144,10 @@ class RT11ExtractGUI:
         self.temp_dir = None
         self.output_dir = None
         self.is_extracting = False
+        self.fuse_mount_point = None  # FUSE mount point
+        self.fuse_process = None      # FUSE process
+        self.fuse_mounted = False     # Track if FUSE is successfully mounted
+        self.startup_warning_shown = False  # Track if startup warning was shown
         
         # Windows-specific variables
         if sys.platform == "win32":
@@ -91,6 +156,9 @@ class RT11ExtractGUI:
             self.CREATE_NO_WINDOW = 0
         
         self.setup_ui()
+        
+        # Show startup warning about filesystem mounting (after UI is ready)
+        self.root.after(500, self.show_startup_warning)
         
         # Check rt11extract
         self.check_rt11extract()
@@ -167,7 +235,16 @@ class RT11ExtractGUI:
         self.extract_all_btn.grid(row=0, column=0, padx=(0, 5))
         
         self.extract_selected_btn = ttk.Button(buttons_frame, text="Extract Selected", command=self.extract_selected, state="disabled")
-        self.extract_selected_btn.grid(row=0, column=1)
+        self.extract_selected_btn.grid(row=0, column=1, padx=(0, 5))
+        
+        # FUSE Mount button (works on all platforms with proper drivers)
+        self.mount_btn = ttk.Button(buttons_frame, text="Mount as Filesystem", 
+                                   command=self.mount_fuse, state="disabled")
+        self.mount_btn.grid(row=0, column=2, padx=(0, 5))
+
+        self.open_folder_btn = ttk.Button(buttons_frame, text="Open Output Folder", 
+                                         command=self.open_output_folder, state="disabled")
+        self.open_folder_btn.grid(row=0, column=3, padx=(0, 5))
         
         # Log
         log_frame = ttk.LabelFrame(main_frame, text="Log", padding="10")
@@ -274,12 +351,32 @@ class RT11ExtractGUI:
             kwargs = self._get_subprocess_kwargs()
             result = subprocess.run(cmd, **kwargs)
             
+            # Log output for debugging
+            if result.stdout:
+                self.log("Command output:")
+                for line in result.stdout.split('\n'):
+                    if line.strip():
+                        self.log(f"  {line.strip()}")
+            if result.stderr:
+                self.log("Command error output:")
+                for line in result.stderr.split('\n'):
+                    if line.strip():
+                        self.log(f"  {line.strip()}")
+            
             if result.returncode == 0:
                 # Buscar archivos y directorios en el output
                 self._parse_extracted_files()
             else:
-                self.root.after(0, lambda: messagebox.showerror("Error", 
-                    f"Failed to scan file (exit code {result.returncode})"))
+                error_msg = "\n".join([
+                    f"Failed to scan file (exit code {result.returncode})",
+                    "",
+                    "Command:",
+                    " ".join(cmd),
+                    "",
+                    "Working directory:",
+                    kwargs.get('cwd', os.getcwd())
+                ])
+                self.root.after(0, lambda: messagebox.showerror("Error", error_msg))
         except Exception as e:
             self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
         finally:
@@ -410,6 +507,256 @@ class RT11ExtractGUI:
             self.is_extracting = False
             self.root.after(0, lambda: self.progress_bar.stop())
             self.root.after(0, lambda: self.progress_var.set("Ready"))
+
+    def show_startup_warning(self):
+        """Show startup warning about filesystem mounting development status"""
+        # Only show once per session
+        if self.startup_warning_shown:
+            return
+            
+        self.startup_warning_shown = True
+        
+        warning_text = """RT-11 Extract GUI - Filesystem Mounting Status
+
+⚠️  FILESYSTEM MOUNTING IN DEVELOPMENT  ⚠️
+
+The "Mount as Filesystem" feature is currently under active development:
+
+• May not work reliably on all systems
+• Requires additional drivers (macFUSE on macOS, WinFsp on Windows)
+• Some disk images may not mount correctly
+• Unmounting may occasionally require manual intervention
+
+✅ STABLE FEATURES:
+• File scanning and browsing
+• Individual and batch file extraction
+• IMD to DSK conversion
+• All extraction functionality
+
+These core features are fully tested and reliable for production use.
+
+Click OK to continue..."""
+        
+        messagebox.showinfo("Development Notice", warning_text)
+
+    def mount_fuse(self):
+        """Mount the RT-11 image as a filesystem using FUSE"""
+        if not self.current_file:
+            messagebox.showwarning("Warning", "Please select and scan a disk image first.")
+            return
+        
+        # Check platform support and available drivers
+        if sys.platform == "win32":
+            if not self.check_winfsp_availability():
+                messagebox.showerror("WinFsp Not Installed",
+                    "WinFsp is not installed on this system.\n\n" +
+                    "WinFsp is required for filesystem mounting on Windows.\n\n" +
+                    "Please download and install WinFsp from:\n" +
+                    "  https://winfsp.dev/\n\n" +
+                    "After installation, restart this application.")
+                return
+        else:
+            # macOS/Linux: Check for FUSE
+            if not os.path.exists('/usr/local/lib/libfuse.dylib') and \
+               not os.path.exists('/usr/local/lib/libfuse.2.dylib') and \
+               not os.path.exists('/opt/homebrew/lib/libfuse.dylib'):
+                if sys.platform == "darwin":
+                    messagebox.showerror("macFUSE Not Installed", 
+                        "macFUSE is not installed on this system.\n\n" +
+                        "Please install macFUSE from:\n" +
+                        "https://osxfuse.github.io/\n\n" +
+                        "After installation, restart this application.")
+                else:
+                    messagebox.showerror("FUSE Not Installed", 
+                        "FUSE is not installed on this system.\n\n" +
+                        "Please install FUSE using:\n" +
+                        "Ubuntu/Debian: sudo apt install fuse libfuse-dev\n" +
+                        "RHEL/CentOS: sudo yum install fuse fuse-devel\n" +
+                        "After installation, restart this application.")
+                return
+
+        # Create mount point
+        if sys.platform == "win32":
+            # Windows: Find available drive letter
+            import string
+            for letter in reversed(string.ascii_uppercase):
+                if letter in ['A', 'B', 'C']:  # Skip system drives
+                    continue
+                drive = f"{letter}:"
+                try:
+                    if not os.path.exists(drive):
+                        mount_dir = drive
+                        break
+                except OSError:
+                    mount_dir = drive
+                    break
+            else:
+                messagebox.showerror("Error", "No available drive letters found")
+                return
+        else:
+            # Unix: Create directory mount point
+            mount_dir = Path.home() / "rt11_mounted"
+            try:
+                if mount_dir.exists():
+                    if sys.platform == "darwin":
+                        subprocess.run(["umount", str(mount_dir)], capture_output=True)
+                    elif sys.platform.startswith('linux'):
+                        subprocess.run(["fusermount", "-u", str(mount_dir)], capture_output=True)
+                    shutil.rmtree(mount_dir)
+                mount_dir.mkdir(exist_ok=True)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to create mount directory:\n{e}")
+                return
+
+        # Start FUSE mount
+        self.progress_var.set("Mounting filesystem...")
+        self.mount_btn.config(state="disabled")
+        threading.Thread(target=self._mount_fuse_thread, args=(mount_dir,), daemon=True).start()
+
+    def _mount_fuse_thread(self, mount_dir):
+        """Background thread for FUSE mounting"""
+        try:
+            self.log(f"Mounting {os.path.basename(self.current_file)} at {mount_dir}...")
+            
+            # Get FUSE script path
+            if sys.platform == "win32":
+                fuse_script = script_dir / "rt11_mount.bat"
+            else:
+                fuse_script = script_dir / "backend" / "filesystem_mount" / "rt11_fuse_universal.py"
+            
+            if not fuse_script.exists():
+                raise FileNotFoundError(f"FUSE script not found: {fuse_script}")
+            
+            # Run mount command
+            cmd = [str(fuse_script), self.current_file, str(mount_dir)]
+            kwargs = self._get_subprocess_kwargs()
+            kwargs.update({
+                'stdout': subprocess.PIPE,
+                'stderr': subprocess.PIPE,
+                'text': True
+            })
+            
+            self.fuse_process = subprocess.Popen(cmd, **kwargs)
+            self.fuse_mount_point = mount_dir
+            
+            # Wait for mount to be ready
+            time.sleep(2)
+            
+            try:
+                # Check if mount point has files
+                if isinstance(mount_dir, Path):
+                    files = list(mount_dir.iterdir())
+                else:  # Windows drive letter
+                    files = os.listdir(mount_dir + "\\")
+                
+                if files:
+                    self.log(f"Filesystem mounted successfully! Found {len(files)} files")
+                    self.fuse_mounted = True
+                    
+                    # Update mount button
+                    self.root.after(0, lambda: self.mount_btn.config(
+                        text="Unmount Filesystem",
+                        command=self.unmount_fuse,
+                        state="normal"
+                    ))
+                    
+                    # Open file manager
+                    if sys.platform == "win32":
+                        os.startfile(mount_dir)
+                    elif sys.platform == "darwin":
+                        subprocess.run(["open", str(mount_dir)])
+                    else:
+                        subprocess.run(["xdg-open", str(mount_dir)])
+                    
+                    messagebox.showinfo("Mount Success",
+                        f"RT-11 filesystem mounted at:\n{mount_dir}\n\n" +
+                        f"Files available: {len(files)}")
+                else:
+                    raise Exception("Mount point appears empty")
+                    
+            except Exception as e:
+                self.log(f"Error checking mount: {e}")
+                raise
+                
+        except Exception as e:
+            self.log(f"Error mounting filesystem: {e}")
+            messagebox.showerror("Mount Error", f"Failed to mount filesystem:\n{e}")
+            # Clean up
+            if hasattr(self, 'fuse_process') and self.fuse_process:
+                self.fuse_process.terminate()
+            if isinstance(mount_dir, Path) and mount_dir.exists():
+                mount_dir.rmdir()
+            self.fuse_process = None
+            self.fuse_mount_point = None
+        finally:
+            self.progress_var.set("Ready")
+            if not self.fuse_mounted:
+                self.mount_btn.config(
+                    text="Mount as Filesystem",
+                    command=self.mount_fuse,
+                    state="normal"
+                )
+
+    def unmount_fuse(self):
+        """Unmount FUSE filesystem"""
+        if not self.fuse_mount_point:
+            return
+            
+        try:
+            self.log(f"Unmounting filesystem from {self.fuse_mount_point}...")
+            
+            # Platform-specific unmounting
+            if sys.platform == "win32":
+                if self.fuse_process:
+                    self.fuse_process.terminate()
+                # Also try net use command
+                subprocess.run(["net", "use", str(self.fuse_mount_point), "/delete"], 
+                             capture_output=True)
+            else:
+                if self.fuse_process:
+                    self.fuse_process.terminate()
+                if sys.platform == "darwin":
+                    subprocess.run(["umount", str(self.fuse_mount_point)], 
+                                 capture_output=True)
+                elif sys.platform.startswith('linux'):
+                    subprocess.run(["fusermount", "-u", str(self.fuse_mount_point)], 
+                                 capture_output=True)
+                
+                # Remove mount point directory
+                if isinstance(self.fuse_mount_point, Path):
+                    self.fuse_mount_point.rmdir()
+            
+            self.log("Filesystem unmounted successfully")
+            
+        except Exception as e:
+            self.log(f"Error unmounting filesystem: {e}")
+            messagebox.showerror("Unmount Error", f"Failed to unmount filesystem:\n{e}")
+        finally:
+            # Reset state
+            self.fuse_process = None
+            self.fuse_mount_point = None
+            self.fuse_mounted = False
+            self.mount_btn.config(
+                text="Mount as Filesystem",
+                command=self.mount_fuse,
+                state="normal"
+            )
+
+    def open_output_folder(self):
+        """Open output folder in file manager"""
+        if not self.output_dir or not self.output_dir.exists():
+            messagebox.showwarning("Warning", "No output folder available")
+            return
+        
+        try:
+            if sys.platform == "win32":
+                os.startfile(self.output_dir)
+            elif sys.platform == "darwin":
+                subprocess.run(["open", str(self.output_dir)])
+            else:
+                subprocess.run(["xdg-open", str(self.output_dir)])
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to open folder:\n{e}")
 
 def main():
     root = tk.Tk()
