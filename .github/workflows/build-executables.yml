@@ -35,82 +35,42 @@ jobs:
         
         # Main CLI extractor
         Write-Host "Building RT11Extract.exe..."
-        pyinstaller --onefile --name "RT11Extract" --paths="backend" --paths="." \
-          --add-data "backend/extractors;backend/extractors" \
-          --add-data "backend/filesystems;backend/filesystems" \
-          --add-data "backend/extractors/rt11extract_universal;." \
-          --hidden-import="backend.extractors" \
-          --hidden-import="backend.filesystems" \
-          backend/extractors/rt11extract
+        pyinstaller --onefile --name RT11Extract --paths backend --paths . --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --add-data "backend/extractors/rt11extract_universal;." --hidden-import backend.extractors --hidden-import backend.filesystems backend/extractors/rt11extract
           
         # Universal extractor 
         Write-Host "Building rt11extract_universal.exe..."
-        pyinstaller --onefile --name "rt11extract_universal" --paths="backend" --paths="." \
-          --add-data "backend/extractors;backend/extractors" \
-          --add-data "backend/filesystems;backend/filesystems" \
-          --hidden-import="backend.extractors" \
-          --hidden-import="backend.filesystems" \
-          backend/extractors/rt11extract_universal
+        pyinstaller --onefile --name rt11extract_universal --paths backend --paths . --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --hidden-import backend.extractors --hidden-import backend.filesystems backend/extractors/rt11extract_universal
           
         # Universal extractor from .py
         Write-Host "Building universal_extractor.exe..."
-        pyinstaller --onefile --name "universal_extractor" --paths="backend" --paths="." \
-          --add-data "backend/extractors;backend/extractors" \
-          --add-data "backend/filesystems;backend/filesystems" \
-          --hidden-import="backend.extractors" \
-          --hidden-import="backend.filesystems" \
-          backend/extractors/universal_extractor.py
+        pyinstaller --onefile --name universal_extractor --paths backend --paths . --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --hidden-import backend.extractors --hidden-import backend.filesystems backend/extractors/universal_extractor.py
         
         # 2. Build IMD converter
-        pyinstaller --onefile --name "imd2raw" --paths="backend" --paths="." backend/image_converters/imd2raw.py
+        pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
         
-        # 3. Build GUI - CRITICAL FIX: Use backend directly, skip problematic filesystem_mount
-        Write-Host "Building Windows GUI with simplified backend..."
-        
-        # Build GUI with ALL backends and extractors for maximum compatibility
+        # 3. Build GUI with backend
         Write-Host "Building Windows GUI..."
         
-        # Start with base command
-        $gui_cmd = "pyinstaller --onefile --windowed --name RT11ExtractGUI "
-        
-        # Add icon if available
-        if (Test-Path "icon.png") {
-            $gui_cmd += "--icon=icon.png --add-data icon.png;. "
+        # Get GUI path
+        $gui_script = "gui/desktop/rt11extract_gui.py"
+        if (-not (Test-Path $gui_script)) {
+            Write-Error "GUI script not found at: $gui_script"
+            exit 1
         }
         
-        # Add paths
-        $gui_cmd += "--paths=backend --paths=gui/desktop --paths=. "
-        
-        # Add all backend data and scripts
-        $gui_cmd += "--add-data backend/extractors;backend/extractors "
-        $gui_cmd += "--add-data backend/filesystems;backend/filesystems "
-        $gui_cmd += "--add-data backend/extractors/rt11extract_universal;. "
-        $gui_cmd += "--add-data backend/extractors/universal_extractor.py;. "
-        
-        # Add all imports
-        $gui_cmd += "--hidden-import=tkinter "
-        $gui_cmd += "--hidden-import=PIL "
-        $gui_cmd += "--hidden-import=backend.extractors "
-        $gui_cmd += "--hidden-import=backend.filesystems "
-        $gui_cmd += "--hidden-import=backend.extractors.universal_extractor "
-        $gui_cmd += "--hidden-import=backend.extractors.rt11extract_smart "
-        
-        # Add main script
-        $gui_cmd += "gui/desktop/rt11extract_gui.py"
-        
-        Write-Host "Running GUI build command:"
-        Write-Host $gui_cmd
-        Invoke-Expression $gui_cmd
+        # Single command without array syntax
+        Write-Host "Building Windows GUI..."
+        pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths gui/desktop --paths . --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" --add-data "backend/extractors/rt11extract_universal;." --hidden-import tkinter --hidden-import PIL --hidden-import backend.extractors --hidden-import backend.filesystems --hidden-import backend.extractors.universal_extractor --hidden-import backend.extractors.rt11extract_smart "$gui_script"
     
     - name: Create Windows package
       run: |
         mkdir RT11Extractor-Windows-x64
         # Copy ALL executables
-        if (Test-Path "dist\RT11Extract.exe") { copy dist\RT11Extract.exe RT11Extractor-Windows-x64\ }
-        if (Test-Path "dist\rt11extract_universal.exe") { copy dist\rt11extract_universal.exe RT11Extractor-Windows-x64\ }
-        if (Test-Path "dist\universal_extractor.exe") { copy dist\universal_extractor.exe RT11Extractor-Windows-x64\ }
-        if (Test-Path "dist\RT11ExtractGUI.exe") { copy dist\RT11ExtractGUI.exe RT11Extractor-Windows-x64\ }
-        if (Test-Path "dist\imd2raw.exe") { copy dist\imd2raw.exe RT11Extractor-Windows-x64\ }
+        if (Test-Path "dist/RT11Extract.exe") { copy "dist/RT11Extract.exe" "RT11Extractor-Windows-x64/" }
+        if (Test-Path "dist/rt11extract_universal.exe") { copy "dist/rt11extract_universal.exe" "RT11Extractor-Windows-x64/" }
+        if (Test-Path "dist/universal_extractor.exe") { copy "dist/universal_extractor.exe" "RT11Extractor-Windows-x64/" }
+        if (Test-Path "dist/RT11ExtractGUI.exe") { copy "dist/RT11ExtractGUI.exe" "RT11Extractor-Windows-x64/" }
+        if (Test-Path "dist/imd2raw.exe") { copy "dist/imd2raw.exe" "RT11Extractor-Windows-x64/" }
         # Copy documentation
         if (Test-Path "README.md") { copy README.md RT11Extractor-Windows-x64\ }
         # Create Windows-specific README
@@ -210,32 +170,32 @@ jobs:
           --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
           backend/extractors/rt11extract || echo "Internal CLI build failed, continuing..."
         
-        # Now build GUI with ALL executables embedded - IMPORTANT: Name it RT11ExtractGUI
-        echo "Building macOS GUI with ALL CLI tools embedded..."
+        # 4. Build GUI with ALL CLIs embedded
+        echo "Building macOS GUI..."
+        
+        # Get GUI path
+        gui_script="gui/desktop/rt11extract_gui.py"
+        if [ ! -f "$gui_script" ]; then
+            echo "ERROR: GUI script not found at: $gui_script"
+            exit 1
+        fi
         
         # First, move all built CLIs to cli/ subdirectory
         mkdir -p cli_tools
         for cli in rt11extract_cli rt11extract_universal universal_extractor imd2raw; do
-          if [ -f "dist/$cli" ]; then
-            echo "Moving $cli to cli_tools/..."
-            cp "dist/$cli" "cli_tools/"
-            chmod +x "cli_tools/$cli"
-          fi
+            if [ -f "dist/$cli" ]; then
+                echo "Moving $cli to cli_tools/..."
+                cp "dist/$cli" "cli_tools/"
+                chmod +x "cli_tools/$cli"
+            fi
         done
         
-        # Build GUI with cli_tools directory embedded
-        CLI_EMBEDS="--add-data cli_tools:cli"
-        
-        pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="gui/desktop" --paths="backend" --paths="." \
-          --add-data "backend/extractors:backend/extractors" \
-          --add-data "backend/filesystems:backend/filesystems" \
-          --add-data "backend/extractors/rt11extract_universal:backend/extractors" \
-          $CLI_EMBEDS \
-          --hidden-import="tkinter" --hidden-import="PIL" \
-          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
-          gui/desktop/rt11extract_gui.py || {
-          echo "GUI build failed, trying minimal build..."
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="gui/desktop" --paths="." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
+        # Build command all in one line to avoid continuation issues
+        echo "Running GUI build..."
+        pyinstaller --onefile --windowed --name RT11ExtractGUI --paths gui/desktop --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --add-data "backend/extractors/rt11extract_universal:backend/extractors" --add-data "cli_tools:cli" --hidden-import tkinter --hidden-import PIL --hidden-import backend.extractors --hidden-import backend.filesystems --hidden-import backend.extractors.universal_extractor --hidden-import backend.extractors.rt11extract_smart "$gui_script" || {
+            echo "GUI build failed, trying minimal build..."
+            pyinstaller --onefile --windowed --name RT11ExtractGUI --paths gui/desktop --paths . \
+                --hidden-import tkinter --hidden-import PIL "$gui_script"
         }
         
         # Check what was built

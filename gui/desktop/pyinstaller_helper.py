@@ -48,63 +48,77 @@ def get_backend_path():
     return None
 
 def get_rt11extract_cli_path():
-    """Get path to RT-11 extract CLI executable"""
+    """Get path to RT-11 extract CLI executable.
+    Windows: Tries RT11Extract.exe, rt11extract_universal.exe, universal_extractor.exe
+    macOS: Tries CLIs in Contents/cli/ inside app bundle
+    """
     if getattr(sys, 'frozen', False):
-        # Running as compiled executable
         exe_dir = Path(sys.executable).parent
         
         if sys.platform.startswith('win'):
-            possible_names = ["RT11Extract.exe", "rt11extract.exe"]
-        elif sys.platform == 'darwin':  # macOS
-            if str(exe_dir).endswith('.app/Contents/MacOS'):
-                # Inside .app bundle
-                possible_names = ["rt11extract_cli", "RT11Extract"]
-            else:
-                possible_names = ["rt11extract_cli", "RT11Extract"]
-        else:  # Linux
-            possible_names = ["RT11Extract", "rt11extract"]
-        
-        # Try each possible name in the executable directory
-        for name in possible_names:
-            cli_path = exe_dir / name
-            if cli_path.exists():
-                return cli_path
-                
-        # For macOS .app bundles, also try parent directories
-        if sys.platform == 'darwin' and str(exe_dir).endswith('.app/Contents/MacOS'):
-            parent_dir = exe_dir.parent.parent.parent  # Outside .app bundle
-            for name in possible_names:
-                cli_path = parent_dir / name
+            # Windows: Try all CLI executables in same directory
+            cli_names = [
+                "RT11Extract.exe",
+                "rt11extract_universal.exe",
+                "universal_extractor.exe"
+            ]
+            for name in cli_names:
+                cli_path = exe_dir / name
                 if cli_path.exists():
                     return cli_path
+                    
+        elif sys.platform == 'darwin':
+            # macOS: Try CLIs in bundle's cli directory
+            if str(exe_dir).endswith('.app/Contents/MacOS'):
+                cli_dir = exe_dir.parent.parent / "cli"
+                cli_names = [
+                    "rt11extract_cli",
+                    "rt11extract_universal",
+                    "universal_extractor"
+                ]
+                for name in cli_names:
+                    cli_path = cli_dir / name
+                    if cli_path.exists():
+                        return cli_path
+                        
+            # Fallback: Try parent directory for standalone executables
+            else:
+                return exe_dir / "rt11extract_cli"
+                
+        else:  # Linux
+            return exe_dir / "RT11Extract"
+            
     else:
-        # Running as script
+        # Running as script - use backend script directly
         script_dir = Path(__file__).parent.parent.parent
         return script_dir / "backend" / "extractors" / "rt11extract"
     
     return None
 
 def get_imd2raw_path():
-    """Get path to imd2raw executable"""
+    """Get path to imd2raw executable.
+    Windows: Uses imd2raw.exe in same directory
+    macOS: Uses imd2raw in Contents/cli/ inside app bundle
+    """
     if getattr(sys, 'frozen', False):
-        # Running as compiled executable
         exe_dir = Path(sys.executable).parent
         
         if sys.platform.startswith('win'):
-            imd_name = "imd2raw.exe"
-        else:
-            imd_name = "imd2raw"
-        
-        imd_path = exe_dir / imd_name
-        if imd_path.exists():
-            return imd_path
+            # Windows: imd2raw.exe in same directory
+            return exe_dir / "imd2raw.exe"
             
-        # For macOS .app bundles, also try parent directories
-        if sys.platform == 'darwin' and str(exe_dir).endswith('.app/Contents/MacOS'):
-            parent_dir = exe_dir.parent.parent.parent  # Outside .app bundle
-            imd_path = parent_dir / imd_name
-            if imd_path.exists():
-                return imd_path
+        elif sys.platform == 'darwin':
+            # macOS: imd2raw in bundle's cli directory
+            if str(exe_dir).endswith('.app/Contents/MacOS'):
+                cli_dir = exe_dir.parent.parent / "cli"
+                return cli_dir / "imd2raw"
+            # Fallback: same directory for standalone
+            else:
+                return exe_dir / "imd2raw"
+                
+        else:  # Linux
+            return exe_dir / "imd2raw"
+            
     else:
         # Running as script
         script_dir = Path(__file__).parent.parent.parent

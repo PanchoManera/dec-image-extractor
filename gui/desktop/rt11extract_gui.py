@@ -445,25 +445,25 @@ def _get_subprocess_kwargs(self):
         self.log(f"DEBUG: Setting up subprocess kwargs...")
         self.log(f"DEBUG: Initial cwd = {kwargs['cwd']}")
         
-            # On Windows, hide the console window
-            if sys.platform == "win32":
-                kwargs['creationflags'] = CREATE_NO_WINDOW
-                self.log("DEBUG: Added Windows CREATE_NO_WINDOW flag")
-            
-            # When running as compiled app, set proper working directory
-            if getattr(sys, 'frozen', False):
-                if sys.platform == "darwin":
-                    # For macOS bundle, all CLIs should be in Contents/cli/
-                    exe_path = Path(sys.executable)
-                    cli_dir = exe_path.parent.parent / "cli"
-                    if cli_dir.exists():
-                        kwargs['cwd'] = str(cli_dir)
-                        self.log(f"DEBUG: Using macOS bundle cli dir: {cli_dir}")
-                elif sys.platform == "win32":
-                    # For Windows, use same directory as GUI executable
-                    exe_dir = Path(sys.executable).parent
-                    kwargs['cwd'] = str(exe_dir)
-                    self.log(f"DEBUG: Using Windows exe dir: {exe_dir}")
+        # On Windows, hide the console window
+        if sys.platform == "win32":
+            kwargs['creationflags'] = CREATE_NO_WINDOW
+            self.log("DEBUG: Added Windows CREATE_NO_WINDOW flag")
+        
+        # When running as compiled app, set proper working directory
+        if getattr(sys, 'frozen', False):
+            if sys.platform == "darwin":
+                # For macOS bundle, all CLIs should be in Contents/cli/
+                exe_path = Path(sys.executable)
+                cli_dir = exe_path.parent.parent / "cli"
+                if cli_dir.exists():
+                    kwargs['cwd'] = str(cli_dir)
+                    self.log(f"DEBUG: Using macOS bundle cli dir: {cli_dir}")
+            elif sys.platform == "win32":
+                # For Windows, use same directory as GUI executable
+                exe_dir = Path(sys.executable).parent
+                kwargs['cwd'] = str(exe_dir)
+                self.log(f"DEBUG: Using Windows exe dir: {exe_dir}")
             
             self.log(f"DEBUG: Final kwargs = {kwargs}")
             return kwargs
