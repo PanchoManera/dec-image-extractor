@@ -114,6 +114,7 @@ class RT11ExtractGUI:
         self.fuse_mount_point = None  # FUSE mount point
         self.fuse_process = None      # FUSE process
         self.fuse_mounted = False     # Track if FUSE is successfully mounted
+        self.startup_warning_shown = False  # Track if startup warning was shown
         
         self.setup_ui()
         self.setup_menu()
@@ -1326,6 +1327,12 @@ class RT11ExtractGUI:
             
     def show_startup_warning(self):
         """Show startup warning about filesystem mounting development status"""
+        # Only show once per session
+        if self.startup_warning_shown:
+            return
+            
+        self.startup_warning_shown = True
+        
         warning_text = """RT-11 Extract GUI - Filesystem Mounting Status
 
 ⚠️  FILESYSTEM MOUNTING IN DEVELOPMENT  ⚠️
