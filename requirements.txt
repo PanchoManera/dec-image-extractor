@@ -1,2 +1,5 @@
-# RT-11 Extractor Web Interface Dependencies
-# No external dependencies - uses only Python standard library
+# RT-11 Extractor GUI Dependencies
+pillow>=9.5.0
+wheel>=0.40.0
+pyinstaller>=5.13.0
+setuptools>=65.5.1
