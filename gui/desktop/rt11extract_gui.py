@@ -1424,9 +1424,38 @@ Digital Equipment Corporation (DEC) computers."""
         # Try multiple locations for FUSE script
         possible_locations = []
         
+        # Add detailed debugging for path resolution
+        self.log(f"DEBUG MOUNT: backend_path = {backend_path}")
+        self.log(f"DEBUG MOUNT: script_dir = {script_dir}")
+        self.log(f"DEBUG MOUNT: sys.executable = {sys.executable}")
+        self.log(f"DEBUG MOUNT: sys.frozen = {getattr(sys, 'frozen', False)}")
+        self.log(f"DEBUG MOUNT: fuse_script_name = {fuse_script_name}")
+        
         if backend_path:
             # Primary location: backend/filesystem_mount
-            possible_locations.append(backend_path / "filesystem_mount" / fuse_script_name)
+            primary_location = backend_path / "filesystem_mount" / fuse_script_name
+            possible_locations.append(primary_location)
+            self.log(f"DEBUG MOUNT: Primary location: {primary_location}")
+        else:
+            self.log(f"DEBUG MOUNT: WARNING - backend_path is None!")
+            # If backend_path is None, try to calculate it manually
+            if getattr(sys, 'frozen', False):
+                # For packaged apps, backend should be relative to executable
+                exe_dir = Path(sys.executable).parent
+                manual_backend = exe_dir / "backend"
+                if not manual_backend.exists():
+                    manual_backend = exe_dir.parent / "backend"
+                if not manual_backend.exists():
+                    manual_backend = exe_dir.parent / "Resources" / "backend"
+                self.log(f"DEBUG MOUNT: Trying manual backend path: {manual_backend}")
+                if manual_backend.exists():
+                    possible_locations.append(manual_backend / "filesystem_mount" / fuse_script_name)
+            else:
+                # For scripts, backend should be relative to script directory
+                manual_backend = script_dir.parent.parent / "backend"
+                self.log(f"DEBUG MOUNT: Trying manual backend path for script: {manual_backend}")
+                if manual_backend.exists():
+                    possible_locations.append(manual_backend / "filesystem_mount" / fuse_script_name)
         
         if getattr(sys, 'frozen', False):
             # When packaged, also try relative to executable
