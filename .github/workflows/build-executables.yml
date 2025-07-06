@@ -170,10 +170,11 @@ jobs:
         }
         
         # Build GUI with the cleaned backend (NO WINDOWED MODE to debug TCL issues)
+        # CRITICAL FIX: tkinter is built-in Python module, has NO pip package metadata
         if (Test-Path "icon.png") {
-          pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --paths="temp_backend" --paths="gui/desktop" --paths="." --add-data "temp_backend;backend" --add-data "icon.png;." --collect-all tkinter --collect-all PIL --copy-metadata tkinter --copy-metadata PIL --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" --hidden-import="tkinter" --hidden-import="tkinter.filedialog" --hidden-import="tkinter.messagebox" --hidden-import="tkinter.scrolledtext" --hidden-import="tkinter.ttk" --debug=all gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --paths="temp_backend" --paths="gui/desktop" --paths="." --add-data "temp_backend;backend" --add-data "icon.png;." --collect-all tkinter --collect-all PIL --copy-metadata PIL --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" --hidden-import="tkinter" --hidden-import="tkinter.filedialog" --hidden-import="tkinter.messagebox" --hidden-import="tkinter.scrolledtext" --hidden-import="tkinter.ttk" --debug=all gui/desktop/rt11extract_gui.py
         } else {
-          pyinstaller --onefile --name "RT11ExtractGUI" --paths="temp_backend" --paths="gui/desktop" --paths="." --add-data "temp_backend;backend" --collect-all tkinter --collect-all PIL --copy-metadata tkinter --copy-metadata PIL --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" --hidden-import="tkinter" --hidden-import="tkinter.filedialog" --hidden-import="tkinter.messagebox" --hidden-import="tkinter.scrolledtext" --hidden-import="tkinter.ttk" --debug=all gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --name "RT11ExtractGUI" --paths="temp_backend" --paths="gui/desktop" --paths="." --add-data "temp_backend;backend" --collect-all tkinter --collect-all PIL --copy-metadata PIL --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" --hidden-import="tkinter" --hidden-import="tkinter.filedialog" --hidden-import="tkinter.messagebox" --hidden-import="tkinter.scrolledtext" --hidden-import="tkinter.ttk" --debug=all gui/desktop/rt11extract_gui.py
         }
     
     - name: Create Windows package
@@ -218,14 +219,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install pyinstaller pillow fusepy
         
-        # Verify fusepy installation
-        python3 -c "import fusepy; print('✓ fusepy installed successfully')"
+        # Verify fusepy installation - use CORRECT import
         python3 -c "from fuse import FUSE; print('✓ FUSE import successful')"
         
         # EXTREME FIX: Copy fusepy source directly into backend
         echo "Copying fusepy source code directly..."
         mkdir -p backend/fusepy_embedded
-        python3 -c "import fusepy; import os; print(os.path.dirname(fusepy.__file__))" | xargs -I {} cp -r {} backend/fusepy_embedded/
+        python3 -c "import fuse; import os; print(os.path.dirname(fuse.__file__))" | xargs -I {} cp -r {} backend/fusepy_embedded/
         echo "✓ fusepy source copied to backend/fusepy_embedded/"
         ls -la backend/fusepy_embedded/
     
@@ -275,12 +275,14 @@ jobs:
         fi
         
         # Create a more specific data inclusion to avoid directory issues
+        # CRITICAL FIX: tkinter is built-in Python module, has NO pip package metadata  
         if [ -f "icon.png" ]; then
           pyinstaller --onefile --windowed --name "RT11Extract" --icon="icon.png" --paths="gui/desktop" --paths="." \
             --add-data "backend/extractors:backend/extractors" \
             --add-data "backend/image_converters:backend/image_converters" \
             --add-data "backend/filesystems:backend/filesystems" \
             --add-data "backend/filesystem_mount:backend/filesystem_mount" \
+            --add-data "backend/fusepy_embedded:backend/fusepy_embedded" \
             --add-data "gui/desktop/pyinstaller_helper.py:." \
             --add-data "icon.png:." \
             --hidden-import="tkinter" --hidden-import="PIL" --hidden-import="fusepy" --collect-all fusepy --collect-submodules fusepy \
@@ -294,6 +296,7 @@ jobs:
             --add-data "backend/image_converters:backend/image_converters" \
             --add-data "backend/filesystems:backend/filesystems" \
             --add-data "backend/filesystem_mount:backend/filesystem_mount" \
+            --add-data "backend/fusepy_embedded:backend/fusepy_embedded" \
             --add-data "gui/desktop/pyinstaller_helper.py:." \
             --hidden-import="tkinter" --hidden-import="PIL" --hidden-import="fusepy" --collect-all fusepy --collect-submodules fusepy \
             gui/desktop/rt11extract_gui.py || {
