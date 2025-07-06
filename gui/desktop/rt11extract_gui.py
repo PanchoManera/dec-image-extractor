@@ -32,47 +32,41 @@ def setup_backend_path():
 def get_rt11extract_cli_path():
     """Get path to rt11extract CLI tool"""
     if getattr(sys, 'frozen', False):
-        # En modo frozen/bundle
+        # Running from frozen/bundled mode
         exe_dir = Path(sys.executable).parent
         
-            if sys.platform.startswith('win'):
-                # Windows: Try all possible CLI executables in same directory
-                exe_dir = Path(sys.executable).parent
-                cli_options = [
-                    "RT11Extract.exe",            # Main CLI
-                    "rt11extract_universal.exe",  # Universal extractor
-                    "rt11extract_cli.exe"        # Alternative name
-                ]
-                
-                for cli in cli_options:
-                    cli_path = exe_dir / cli
-                    if cli_path.exists():
-                        return cli_path
-            
-        # Add Windows executables extension if missing
         if sys.platform.startswith('win'):
-            if not rt11extract_path.suffix:
-                rt11extract_path = rt11extract_path.with_suffix('.exe')
-        
+            # Windows: Try all possible CLI executables
+            cli_options = [
+                "RT11Extract.exe",           # Main CLI name
+                "rt11extract_universal.exe", # Universal extractor
+                "rt11extract_cli.exe",      # Alternative name
+                "rt11extract.exe"           # Basic name with .exe
+            ]
+            
+            for cli in cli_options:
+                cli_path = exe_dir / cli
+                if cli_path.exists():
+                    return cli_path
                     
         elif sys.platform == 'darwin':
-            # macOS: CLI debe estar en Contents/cli/ del bundle
-            bundle_cli_dir = exe_dir.parent / "cli"  # Contents/MacOS/../cli
+            # macOS: Check bundled CLI tools directory
+            bundle_cli_dir = exe_dir.parent / "cli"
             if bundle_cli_dir.exists():
                 cli_options = [
-                    "rt11extract_cli",       # Nombre principal
-                    "rt11extract",           # Alternativo
-                    "RT11Extract"           # Alternativo
+                    "rt11extract_cli",       # Main CLI
+                    "rt11extract",           # Alternative name
+                    "RT11Extract"           # Alternative name
                 ]
                 
                 for cli in cli_options:
                     cli_path = bundle_cli_dir / cli
                     if cli_path.exists():
-                        # Asegurar que sea ejecutable
+                        # Make it executable
                         cli_path.chmod(cli_path.stat().st_mode | 0o755)
                         return cli_path
                         
-            # Si no está en el bundle, es un error en macOS frozen
+            # If not found in bundle, that's an error in frozen mode
             print(f"ERROR: CLI not found in bundle at {bundle_cli_dir}")
             return None
             
