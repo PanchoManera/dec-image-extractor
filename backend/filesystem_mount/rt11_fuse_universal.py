@@ -85,10 +85,14 @@ class UniversalExtractorWrapper:
         """Encontrar el extractor universal en diferentes ubicaciones"""
         script_dir = Path(__file__).parent
         
+        # Use the same path resolution strategy that works in the GUI
+        # Put direct paths FIRST to avoid broken symlinks
         possible_paths = [
-            script_dir / "rt11extract",           # Extractor universal
-            script_dir / "rt11extract_cli",       # CLI standalone
-            script_dir / "pdp11_smart_extractor.py",  # Extractor inteligente (Unix symlink)
+            script_dir.parent / "extractors" / "rt11extract",  # Direct path to extractor (FIRST PRIORITY)
+            script_dir.parent / "extractors" / "universal_extractor.py",  # Direct path to universal extractor
+            script_dir / "rt11extract",           # Symlink to extractor (if exists)
+            script_dir / "rt11extract_cli",       # Symlink to extractor (if exists)
+            script_dir / "pdp11_smart_extractor.py",  # Symlink to universal_extractor.py (if exists)
             script_dir / "pdp11_smart_extractor_windows.py",  # Windows-compatible wrapper
         ]
         
@@ -154,11 +158,24 @@ class UniversalExtractorWrapper:
             self.logger.info(f"Extracting files to: {temp_path}")
             
             # Ejecutar extractor para extraer todos los archivos
-            cmd = [str(self.rt11extract_path), str(self.image_path), "-o", str(temp_path)]
+            # Determine if we need to use python to run the script
+            if self.rt11extract_path.suffix == '.py':
+                cmd = ["python3", str(self.rt11extract_path), str(self.image_path), "-o", str(temp_path)]
+            else:
+                cmd = [str(self.rt11extract_path), str(self.image_path), "-o", str(temp_path)]
+            
+            self.logger.info(f"Running command: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
             
+            self.logger.info(f"Command exit code: {result.returncode}")
+            if result.stdout:
+                self.logger.info(f"Command stdout: {result.stdout[:500]}...")  # First 500 chars
+            if result.stderr:
+                self.logger.info(f"Command stderr: {result.stderr[:500]}...")  # First 500 chars
+            
             if result.returncode != 0:
-                self.logger.error(f"Extractor failed: {result.stderr}")
+                self.logger.error(f"Extractor failed with exit code {result.returncode}")
+                self.logger.error(f"Stderr: {result.stderr}")
                 return []
             
             # Escanear archivos extraídos

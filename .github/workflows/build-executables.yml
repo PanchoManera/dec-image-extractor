@@ -36,11 +36,11 @@ jobs:
         # 2. Build IMD converter
         pyinstaller --onefile --name "imd2raw" --paths="backend" --paths="." backend/image_converters/imd2raw.py
         
-        # 3. Build GUI with ALL backend embedded
+        # 3. Build GUI with ALL backend embedded (including filesystem_mount for FUSE)
         if (Test-Path "icon.png") {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend;backend" --add-data "icon.png;." --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend;backend" --add-data "icon.png;." --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" gui/desktop/rt11extract_gui.py
         } else {
-          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend;backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --windowed --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend;backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" gui/desktop/rt11extract_gui.py
         }
     
     - name: Create Windows package
@@ -121,12 +121,12 @@ jobs:
         echo "Building GUI..."
         # Create a more specific data inclusion to avoid directory issues
         if [ -f "icon.png" ]; then
-          pyinstaller --onefile --windowed --name "RT11Extract" --icon="icon.png" --paths="gui/desktop" --paths="." --add-data "backend/extractors:backend/extractors" --add-data "backend/image_converters:backend/image_converters" --add-data "backend/filesystems:backend/filesystems" --add-data "gui/desktop/pyinstaller_helper.py:." --add-data "icon.png:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py || {
+          pyinstaller --onefile --windowed --name "RT11Extract" --icon="icon.png" --paths="gui/desktop" --paths="." --add-data "backend/extractors:backend/extractors" --add-data "backend/image_converters:backend/image_converters" --add-data "backend/filesystems:backend/filesystems" --add-data "backend/filesystem_mount:backend/filesystem_mount" --add-data "gui/desktop/pyinstaller_helper.py:." --add-data "icon.png:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py || {
             echo "GUI build with icon failed, trying minimal build..."
             pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
           }
         else
-          pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --add-data "backend/extractors:backend/extractors" --add-data "backend/image_converters:backend/image_converters" --add-data "backend/filesystems:backend/filesystems" --add-data "gui/desktop/pyinstaller_helper.py:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py || {
+          pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --add-data "backend/extractors:backend/extractors" --add-data "backend/image_converters:backend/image_converters" --add-data "backend/filesystems:backend/filesystems" --add-data "backend/filesystem_mount:backend/filesystem_mount" --add-data "gui/desktop/pyinstaller_helper.py:." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py || {
             echo "GUI build failed, trying minimal build..."
             pyinstaller --onefile --windowed --name "RT11Extract" --paths="gui/desktop" --paths="." --hidden-import="tkinter" --hidden-import="PIL" gui/desktop/rt11extract_gui.py
           }
@@ -230,16 +230,16 @@ jobs:
         export PYTHONPATH="."
         
         # 1. Build CLI extractor (main wrapper)
-        pyinstaller --onefile --name "RT11Extract" --paths="backend" --paths="." --add-data "backend:backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" backend/extractors/rt11extract
+        pyinstaller --onefile --name "RT11Extract" --paths="backend" --paths="." --add-data "backend:backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" backend/extractors/rt11extract
         
         # 2. Build IMD converter
         pyinstaller --onefile --name "imd2raw" --paths="backend" --paths="." backend/image_converters/imd2raw.py
         
-        # 3. Build GUI with ALL backend embedded
+        # 3. Build GUI with ALL backend embedded (including filesystem_mount for FUSE)
         if [ -f "icon.png" ]; then
-          pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "icon.png:." --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --name "RT11ExtractGUI" --icon="icon.png" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend:backend" --add-data "icon.png:." --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" gui/desktop/rt11extract_gui.py
         else
-          pyinstaller --onefile --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend:backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" gui/desktop/rt11extract_gui.py
+          pyinstaller --onefile --name "RT11ExtractGUI" --paths="backend" --paths="gui/desktop" --paths="." --add-data "backend:backend" --hidden-import="backend.extractors" --hidden-import="backend.image_converters" --hidden-import="backend.filesystems" --hidden-import="backend.filesystem_mount" gui/desktop/rt11extract_gui.py
         fi
     
     - name: Create Linux package
