@@ -68,7 +68,9 @@ if getattr(sys, 'frozen', False):
         rt11extract_path = script_dir / "RT11Extract"
 else:
     # Running as script
-    script_dir = Path(__file__).parent.parent.parent  # Go up to root from gui/desktop/
+    # Resolve symlink first, then calculate script directory
+    actual_script_path = Path(__file__).resolve()
+    script_dir = actual_script_path.parent.parent.parent  # Go up to root from gui/desktop/
     # Check for different executable names based on platform
     if sys.platform.startswith('win'):
         rt11extract_path = script_dir / "backend" / "extractors" / "RT11Extract.exe"

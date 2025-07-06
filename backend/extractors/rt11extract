@@ -104,16 +104,15 @@ def detect_filesystem_type(image_path: str) -> str:
 def call_rt11_extractor(args):
     """Llama al extractor RT-11 original"""
     script_dir = get_script_dir()
-    # Buscar rt11extract_backup en la raíz del proyecto (3 niveles arriba de backend/extractors)
-    project_root = script_dir.parent.parent
-    rt11_backup = project_root / "rt11extract_backup"
+    # Buscar rt11extract_universal en el mismo directorio (backend/extractors)
+    rt11_universal = script_dir / "rt11extract_universal"
     
-    if not rt11_backup.exists():
-        print(f"❌ Error: RT-11 extractor not found at {rt11_backup}")
+    if not rt11_universal.exists():
+        print(f"❌ Error: RT-11 extractor not found at {rt11_universal}")
         return 1
     
     # Construir comando
-    cmd = [sys.executable, str(rt11_backup)] + sys.argv[1:]
+    cmd = [sys.executable, str(rt11_universal)] + sys.argv[1:]
     
     try:
         # Ejecutar con la misma salida que el original
