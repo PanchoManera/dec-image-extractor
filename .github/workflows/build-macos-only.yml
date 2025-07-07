@@ -75,7 +75,18 @@ jobs:
         mkdir -p dist
         
         # Build CLI tools one by one with detailed logging
-        echo "Building rt11extract..."
+        echo "Building rt11extract_cli (main name for GUI)..."
+        if [ -f "backend/extractors/rt11extract" ]; then
+          pyinstaller --onefile --name rt11extract_cli \
+            --paths="$PWD" --paths="$PWD/backend" \
+            --add-data "backend/extractors:backend/extractors" \
+            --add-data "backend/filesystems:backend/filesystems" \
+            --hidden-import="backend.extractors" \
+            --hidden-import="backend.filesystems" \
+            backend/extractors/rt11extract || echo "rt11extract_cli build failed"
+        fi
+        
+        echo "Building RT11Extract (alternative name)..."
         if [ -f "backend/extractors/rt11extract" ]; then
           pyinstaller --onefile --name RT11Extract \
             --paths="$PWD" --paths="$PWD/backend" \
@@ -83,7 +94,7 @@ jobs:
             --add-data "backend/filesystems:backend/filesystems" \
             --hidden-import="backend.extractors" \
             --hidden-import="backend.filesystems" \
-            backend/extractors/rt11extract || echo "rt11extract build failed"
+            backend/extractors/rt11extract || echo "RT11Extract build failed"
         fi
         
         echo "Building rt11extract_universal..."
@@ -103,8 +114,10 @@ jobs:
             --paths="$PWD" --paths="$PWD/backend" \
             --add-data "backend/extractors:backend/extractors" \
             --add-data "backend/filesystems:backend/filesystems" \
+            --add-data "backend/utils:backend/utils" \
             --hidden-import="backend.extractors" \
             --hidden-import="backend.filesystems" \
+            --hidden-import="backend.utils.bundle_paths" \
             backend/extractors/universal_extractor.py || echo "universal_extractor build failed"
         fi
         
@@ -176,7 +189,7 @@ jobs:
         mkdir -p "$bundle_dir/Contents/Resources"
         
         # Copy CLI tools
-        for tool in RT11Extract rt11extract_universal universal_extractor imd2raw; do
+        for tool in rt11extract_cli RT11Extract rt11extract_universal universal_extractor imd2raw; do
           if [ -f "dist/$tool" ]; then
             cp "dist/$tool" "$cli_dir"
             chmod +x "$cli_dir/$tool"

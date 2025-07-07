@@ -23,9 +23,10 @@ script_dir = Path(__file__).parent
 backend_dir = script_dir.parent
 filesystems_dir = backend_dir / 'filesystems'
 sys.path.insert(0, str(filesystems_dir))
+sys.path.insert(0, str(backend_dir))  # Add backend to path
 
 # Import detection functions from each extractor
-from backend.utils.bundle_paths import get_rt11extract_path
+from utils.bundle_paths import get_rt11extract_path
 
 def detect_rt11_filesystem(path):
     """Detect RT-11 filesystem using CLI extractor"""
