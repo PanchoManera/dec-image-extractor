@@ -346,8 +346,21 @@ class RT11ExtractGUI:
                 shutil.rmtree(self.temp_dir, ignore_errors=True)
             self.temp_dir = Path(tempfile.mkdtemp())
             
-            # Build command
-            cmd = [str(rt11extract_path), self.current_file, '-o', str(self.temp_dir), '-v']
+            # Build command - use rt11extract_universal.exe in Windows
+            exe_dir = Path(sys.executable).parent
+            
+            if sys.platform.startswith('win'):
+                # En Windows usar rt11extract_universal.exe
+                extractor = exe_dir / "rt11extract_universal.exe"
+                if not extractor.exists():
+                    raise FileNotFoundError(f"RT11 Universal extractor not found at: {extractor}")
+            else:
+                # En macOS/Linux usar lo que encontró get_rt11extract_cli_path()
+                if not rt11extract_path or not rt11extract_path.exists():
+                    raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
+                extractor = rt11extract_path
+                
+            cmd = [str(extractor), self.current_file, '-o', str(self.temp_dir), '-v']
             
             # Run command
             kwargs = self._get_subprocess_kwargs()
