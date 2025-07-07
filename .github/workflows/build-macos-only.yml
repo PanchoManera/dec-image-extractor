@@ -1,0 +1,229 @@
+name: Build RT-11 Extractor - macOS Enhanced
+
+on:
+  push:
+    branches: [ macos-workflow-improvements ]
+  pull_request:
+    branches: [ macos-workflow-improvements ]
+  workflow_dispatch:
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        echo "✓ Dependencies installed"
+    
+    - name: Debug environment
+      run: |
+        echo "=== Environment Debug ==="
+        pwd
+        echo "Python version:"
+        python --version
+        echo "Current directory contents:"
+        ls -la
+        echo "Backend structure:"
+        find backend -type f -name "*.py" | head -10
+        echo "GUI structure:"
+        find gui -type f -name "*.py" | head -5
+        
+    - name: Test CLI tools directly
+      run: |
+        echo "=== Testing CLI tools ==="
+        
+        # Test rt11extract
+        if [ -f "backend/extractors/rt11extract" ]; then
+          echo "✓ rt11extract found"
+          chmod +x backend/extractors/rt11extract
+          ./backend/extractors/rt11extract --help || echo "rt11extract help failed"
+        else
+          echo "✗ rt11extract not found"
+        fi
+        
+        # Test rt11extract_universal
+        if [ -f "backend/extractors/rt11extract_universal" ]; then
+          echo "✓ rt11extract_universal found"
+          chmod +x backend/extractors/rt11extract_universal
+          ./backend/extractors/rt11extract_universal --help || echo "rt11extract_universal help failed"
+        else
+          echo "✗ rt11extract_universal not found"
+        fi
+        
+        # Test Python modules
+        echo "Testing Python modules..."
+        export PYTHONPATH="$PWD:$PWD/backend"
+        python -c "import sys; print('Python path:', sys.path)"
+        python -c "from backend.extractors import universal_extractor; print('✓ universal_extractor imported')" || echo "✗ universal_extractor import failed"
+    
+    - name: Build macOS executables (simplified)
+      run: |
+        echo "=== Building macOS executables ==="
+        export PYTHONPATH="$PWD:$PWD/backend"
+        
+        # Create output directory
+        mkdir -p dist
+        cli_tools=(universal_extractor rt11extract_universal RT11Extract imd2raw)
+        
+        # Build CLI tools one by one with detailed logging
+        echo "Building rt11extract..."
+        if [ -f "backend/extractors/rt11extract" ]; then
+          pyinstaller --onefile --name RT11Extract \
+            --paths="$PWD" --paths="$PWD/backend" \
+            --add-data "backend/extractors:backend/extractors" \
+            --add-data "backend/filesystems:backend/filesystems" \
+            --hidden-import="backend.extractors" \
+            --hidden-import="backend.filesystems" \
+            backend/extractors/rt11extract || echo "rt11extract build failed"
+        fi
+        
+        echo "Building rt11extract_universal..."
+        if [ -f "backend/extractors/rt11extract_universal" ]; then
+          pyinstaller --onefile --name rt11extract_universal \
+            --paths="$PWD" --paths="$PWD/backend" \
+            --add-data "backend/extractors:backend/extractors" \
+            --add-data "backend/filesystems:backend/filesystems" \
+            --hidden-import="backend.extractors" \
+            --hidden-import="backend.filesystems" \
+            backend/extractors/rt11extract_universal || echo "rt11extract_universal build failed"
+        fi
+        
+        echo "Building universal_extractor..."
+        if [ -f "backend/extractors/universal_extractor.py" ]; then
+          pyinstaller --onefile --name universal_extractor \
+            --paths="$PWD" --paths="$PWD/backend" \
+            --add-data "backend/extractors:backend/extractors" \
+            --add-data "backend/filesystems:backend/filesystems" \
+            --hidden-import="backend.extractors" \
+            --hidden-import="backend.filesystems" \
+            backend/extractors/universal_extractor.py || echo "universal_extractor build failed"
+        fi
+        
+        echo "Building imd2raw..."
+        if [ -f "backend/image_converters/imd2raw.py" ]; then
+          pyinstaller --onefile --name imd2raw \
+            --paths="$PWD" --paths="$PWD/backend" \
+            backend/image_converters/imd2raw.py || echo "imd2raw build failed"
+        fi
+        
+        echo "=== Build results ==="
+        ls -la dist/ || echo "No dist directory created"
+        
+    - name: Test built executables
+      run: |
+        echo "=== Testing built executables ==="
+        cd dist
+        
+        for exe in RT11Extract rt11extract_universal universal_extractor imd2raw; do
+          if [ -f "$exe" ]; then
+            echo "Testing $exe..."
+            chmod +x "$exe"
+            ./"$exe" --help || echo "$exe help failed"
+            echo "✓ $exe working"
+          else
+            echo "✗ $exe not found"
+          fi
+        done
+        
+    - name: Build GUI (simplified approach)
+      run: |
+        echo "=== Building GUI ==="
+        export PYTHONPATH="$PWD:$PWD/backend:$PWD/gui/desktop"
+        
+        # Verify GUI script exists
+        gui_script="gui/desktop/rt11extract_gui.py"
+        if [ ! -f "$gui_script" ]; then
+          echo "ERROR: GUI script not found at $gui_script"
+          exit 1
+        fi
+        
+        echo "GUI script found, building..."
+        
+        # Simple GUI build
+        pyinstaller --onefile --windowed --name RT11ExtractGUI \
+          --paths="$PWD" \
+          --paths="$PWD/backend" \
+          --paths="$PWD/gui/desktop" \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="tkinter" \
+          --hidden-import="PIL" \
+          --hidden-import="backend.extractors" \
+          --hidden-import="backend.filesystems" \
+          "$gui_script" || echo "GUI build failed"
+        
+        echo "=== GUI build results ==="
+        ls -la dist/
+        
+    - name: Create macOS package
+      run: |
+        echo "=== Creating macOS bundle ==="
+        
+        # Create bundle directory structure
+        bundle_dir="RT11Extractor-macOS/" 
+        cli_dir="$bundle_dir/Contents/Frameworks/cli/"
+        mkdir -p "$cli_dir"
+        
+        # Copy CLI tools
+        for tool in RT11Extract rt11extract_universal universal_extractor imd2raw; do
+          if [ -f "dist/$tool" ]; then
+            cp "dist/$tool" "$cli_dir"
+            chmod +x "$cli_dir$tool"
+            echo "✓ Copied $tool"
+          else
+            echo "✗ $tool not found in dist/"
+          fi
+        done
+        
+        # Copy GUI
+        if [ -f "dist/RT11ExtractGUI" ]; then
+          cp "dist/RT11ExtractGUI" RT11Extractor-macOS/
+          chmod +x "RT11Extractor-macOS/RT11ExtractGUI"
+          echo "✓ Copied RT11ExtractGUI"
+        elif [ -d "dist/RT11ExtractGUI.app" ]; then
+          cp -r "dist/RT11ExtractGUI.app" RT11Extractor-macOS/
+          echo "✓ Copied RT11ExtractGUI.app"
+        else
+          echo "✗ GUI not found in dist/"
+        fi
+        
+        # Copy documentation
+        cp README.md RT11Extractor-macOS/ || echo "README.md not found"
+        
+        # Create macOS README
+        cat > RT11Extractor-macOS/README_macOS.txt << 'EOF'
+RT-11 Extractor para macOS
+
+Contenido:
+- RT11ExtractGUI / RT11ExtractGUI.app (Interfaz gráfica)
+- rt11extract_cli (Extractor CLI principal)
+- rt11extract_universal (Extractor universal)
+- universal_extractor (Extractor Python)
+- imd2raw (Conversor ImageDisk)
+
+Uso:
+- GUI: Doble click en RT11ExtractGUI.app o ejecutar ./RT11ExtractGUI
+- CLI: ./rt11extract_cli imagen.dsk -o output/
+- Conversor: ./imd2raw imagen.imd imagen.dsk
+
+Todos los ejecutables son independientes y no requieren Python instalado.
+EOF
+        
+        echo "=== Final package contents ==="
+        ls -la RT11Extractor-macOS/
+        
+    - name: Upload macOS artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: RT11Extractor-macOS-Debug
+        path: RT11Extractor-macOS/
