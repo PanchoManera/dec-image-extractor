@@ -740,7 +740,7 @@ Examples:
                 print(f"❌ Path not found: {args.path}")
                 return 1
             
-            print(f"🚀 Extracting Unix files from {args.path} to {output_path}")
+            print(f"[EXTRACT] Extracting Unix files from {args.path} to {output_path}")
             
             if target_inode.is_dir():
                 extracted = fs.extract_directory(target_inode, output_path)
