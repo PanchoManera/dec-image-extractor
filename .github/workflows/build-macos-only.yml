@@ -199,6 +199,12 @@ jobs:
           fi
         done
         
+        # Create symlink rt11extract -> rt11extract_cli for universal_extractor compatibility
+        if [ -f "$cli_dir/rt11extract_cli" ]; then
+          ln -s rt11extract_cli "$cli_dir/rt11extract"
+          echo "✓ Created symlink rt11extract -> rt11extract_cli"
+        fi
+        
         # Copy GUI
         if [ -f "dist/RT11ExtractGUI" ]; then
           cp "dist/RT11ExtractGUI" "$bundle_dir/Contents/MacOS/"
