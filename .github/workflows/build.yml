@@ -57,7 +57,7 @@ jobs:
     - name: Build macOS Executables
       if: matrix.os == 'macos-latest'
       run: |
-        mkdir -p RT11Extract-macOS.app/Contents/cli
+        mkdir -p cli
         
         # Build CLI tools
         pyinstaller --onefile --name rt11extract --paths backend --paths . backend/extractors/rt11extract
@@ -65,20 +65,20 @@ jobs:
         pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py
         pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
         
-        # Move CLIs to bundle
-        cp dist/rt11extract RT11Extract-macOS.app/Contents/cli/
-        cp dist/rt11extract_universal RT11Extract-macOS.app/Contents/cli/
-        cp dist/universal_extractor RT11Extract-macOS.app/Contents/cli/
-        cp dist/imd2raw RT11Extract-macOS.app/Contents/cli/
+        # Move CLIs to cli folder
+        cp dist/rt11extract cli/
+        cp dist/rt11extract_universal cli/
+        cp dist/universal_extractor cli/
+        cp dist/imd2raw cli/
         
         # Make CLIs executable
-        chmod +x RT11Extract-macOS.app/Contents/cli/*
+        chmod +x cli/*
         
-        # Build GUI
+        # Build GUI with CLI tools included
         pyinstaller --windowed --name RT11ExtractGUI --paths backend --paths . \
           --add-data "backend/extractors:backend/extractors" \
           --add-data "backend/filesystems:backend/filesystems" \
-          --add-data "RT11Extract-macOS.app/Contents/cli:cli" \
+          --add-data "cli:cli" \
           gui/desktop/rt11extract_gui.py
         
         # Create DMG

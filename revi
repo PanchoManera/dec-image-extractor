@@ -1,0 +1,15 @@
+El problema es que cuando compilas para Windows, el rt11extract_universal.exe está detectando incorrectamente que rsx11mp-30.dsk es RT-11 cuando en realidad es RSX-11 (ODS-1).
+
+Esto puede deberse a:
+
+1. Diferencias en la compilación: El ejecutable de Windows puede tener diferencias en cómo maneja la detección
+2. Orden de detección: Puede que esté probando RT-11 primero y dando un falso positivo
+3. Endianness o lecturas de bytes: Diferencias en cómo lee los headers en Windows vs macOS
+
+¿Podés probar algo en Windows? Ejecutá el CLI directamente para ver si el problema es específico del GUI o del CLI:
+cmd
+O:
+cmd
+Esto nos dirá si el problema está en la auto-detección del CLI o en cómo el GUI llama al CLI.
+
+Si el CLI también detecta mal en Windows, entonces necesitamos revisar la lógica de detección en rt11extract_universal para que sea más precisa y detecte RSX-11/ODS-1 antes que RT-11.
