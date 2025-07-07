@@ -233,6 +233,23 @@ jobs:
         </plist>
         EOF
         
+        # Remove quarantine attributes and sign the bundle
+        echo "=== Code signing ==="
+        # Remove extended attributes that might cause quarantine issues
+        xattr -dr com.apple.quarantine "$bundle_dir" 2>/dev/null || true
+        
+        # Sign the bundle with ad-hoc signing
+        codesign --force --deep --sign - "$bundle_dir" || echo "Code signing failed (expected for GitHub Actions)"
+        
+        # Make the main executable executable (just in case)
+        chmod +x "$bundle_dir/Contents/MacOS/RT11ExtractGUI"
+        
+        # Verify the bundle structure
+        echo "=== Bundle verification ==="
+        ls -la "$bundle_dir/Contents/"
+        ls -la "$bundle_dir/Contents/MacOS/"
+        ls -la "$bundle_dir/Contents/Frameworks/cli/" || echo "CLI tools directory not found"
+        
         # Create package directory and copy bundle
         mkdir -p RT11Extractor-macOS
         cp -r "$bundle_dir" RT11Extractor-macOS/
