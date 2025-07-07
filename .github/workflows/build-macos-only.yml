@@ -200,23 +200,23 @@ jobs:
         cp README.md RT11Extractor-macOS/ || echo "README.md not found"
         
         # Create macOS README
-        cat > RT11Extractor-macOS/README_macOS.txt << EOF
-RT-11 Extractor para macOS
-
-Contenido:
-- RT11ExtractGUI / RT11ExtractGUI.app (Interfaz gráfica)
-- RT11Extract (Extractor CLI principal)
-- rt11extract_universal (Extractor universal)
-- universal_extractor (Extractor Python)
-- imd2raw (Conversor ImageDisk)
-
-Uso:
-- GUI: Doble click en RT11ExtractGUI.app o ejecutar ./RT11ExtractGUI
-- CLI: ./Contents/Frameworks/cli/RT11Extract imagen.dsk -o output/
-- Conversor: ./Contents/Frameworks/cli/imd2raw imagen.imd imagen.dsk
-
-Todos los ejecutables son independientes y no requieren Python instalado.
-EOF
+        cat > RT11Extractor-macOS/README_macOS.txt << 'EOF'
+        RT-11 Extractor para macOS
+        
+        Contenido:
+        - RT11ExtractGUI / RT11ExtractGUI.app (Interfaz gráfica)
+        - RT11Extract (Extractor CLI principal)
+        - rt11extract_universal (Extractor universal)
+        - universal_extractor (Extractor Python)
+        - imd2raw (Conversor ImageDisk)
+        
+        Uso:
+        - GUI: Doble click en RT11ExtractGUI.app o ejecutar ./RT11ExtractGUI
+        - CLI: ./Contents/Frameworks/cli/RT11Extract imagen.dsk -o output/
+        - Conversor: ./Contents/Frameworks/cli/imd2raw imagen.imd imagen.dsk
+        
+        Todos los ejecutables son independientes y no requieren Python instalado.
+        EOF
         
         echo "=== Final package contents ==="
         ls -la RT11Extractor-macOS/
