@@ -97,14 +97,19 @@ jobs:
             backend/extractors/rt11extract || echo "RT11Extract build failed"
         fi
         
-        echo "Building rt11extract_universal..."
+        echo "Building rt11extract_universal (COMPLETE with all filesystems)..."
         if [ -f "backend/extractors/rt11extract_universal" ]; then
           pyinstaller --onefile --name rt11extract_universal \
             --paths="$PWD" --paths="$PWD/backend" \
             --add-data "backend/extractors:backend/extractors" \
             --add-data "backend/filesystems:backend/filesystems" \
+            --add-data "backend/utils:backend/utils" \
             --hidden-import="backend.extractors" \
             --hidden-import="backend.filesystems" \
+            --hidden-import="backend.extractors.universal_extractor" \
+            --hidden-import="backend.filesystems.ods1_extractor_v2" \
+            --hidden-import="backend.filesystems.unix_pdp11_extractor" \
+            --hidden-import="backend.utils.bundle_paths" \
             backend/extractors/rt11extract_universal || echo "rt11extract_universal build failed"
         fi
         

@@ -17,7 +17,7 @@ def get_bundled_executable_path(exe_name: str) -> Path:
     Get path to bundled executable, handling frozen mode correctly
     
     Args:
-        exe_name: Name of executable (e.g., 'rt11extract_cli', 'imd2raw')
+        exe_name: Name of executable (e.g., 'rt11extract_cli', 'imd2raw', 'universal_extractor')
         
     Returns:
         Path to executable

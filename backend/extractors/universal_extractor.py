@@ -96,7 +96,11 @@ try:
                 
                 vol_name = extractor.volume_name.strip()
                 if vol_name:
-                    return True, f"ODS-1/Files-11 filesystem (Volume: {vol_name})"
+                    # Check for RSX naming patterns
+                    if "RSX" in vol_name.upper():
+                        return True, f"ODS-1/Files-11 filesystem - RSX-11M+ (Volume: {vol_name})"
+                    else:
+                        return True, f"ODS-1/Files-11 filesystem (Volume: {vol_name})"
                 else:
                     return True, "ODS-1/Files-11 filesystem (RSX-11 or early VMS) with enhanced TSK support"
             return False, "Not an ODS-1 filesystem"

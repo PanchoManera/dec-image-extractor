@@ -358,19 +358,26 @@ class RT11ExtractGUI:
                 # En macOS/Linux usar rt11extract_universal como Windows (maneja todos los tipos)
                 bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
                 if getattr(sys, 'frozen', False) and bundle_cli_dir.exists():
-                    # Usar rt11extract_universal que funciona (temporalmente mientras arreglamos universal_extractor)
+                    # Intentar usar rt11extract_universal primero (detecta ODS-1/RSX)
                     extractor = bundle_cli_dir / "rt11extract_universal"
                     if not extractor.exists():
-                        # Fallback a rt11extract_cli
-                        extractor = bundle_cli_dir / "rt11extract_cli"
-                        if not extractor.exists():
-                            raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
+                        # Si no existe, usar universal_extractor compilado que SÍ detecta todo correctamente
+                        universal_exe = bundle_cli_dir / "universal_extractor"
+                        if universal_exe.exists():
+                            # Usar el ejecutable compilado de universal_extractor
+                            extractor = universal_exe
+                        else:
+                            # Último fallback a rt11extract_cli (solo RT-11)
+                            extractor = bundle_cli_dir / "rt11extract_cli"
+                            if not extractor.exists():
+                                raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
                 else:
                     # En modo desarrollo usar rt11extract_path
                     if not rt11extract_path or not rt11extract_path.exists():
                         raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
                     extractor = rt11extract_path
                 
+            # Build command for executable
             cmd = [str(extractor), '-o', str(self.temp_dir), '-v', self.current_file]
             
             # Run command
@@ -528,13 +535,19 @@ class RT11ExtractGUI:
                 # En macOS/Linux usar rt11extract_universal como Windows (mismo que scan)
                 bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
                 if getattr(sys, 'frozen', False) and bundle_cli_dir.exists():
-                    # Usar rt11extract_universal que funciona (mismo que scan)
+                    # Intentar usar rt11extract_universal primero (detecta ODS-1/RSX)
                     extractor = bundle_cli_dir / "rt11extract_universal"
                     if not extractor.exists():
-                        # Fallback a rt11extract_cli
-                        extractor = bundle_cli_dir / "rt11extract_cli"
-                        if not extractor.exists():
-                            raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
+                        # Si no existe, usar universal_extractor compilado que SÍ detecta todo correctamente
+                        universal_exe = bundle_cli_dir / "universal_extractor"
+                        if universal_exe.exists():
+                            # Usar el ejecutable compilado de universal_extractor
+                            extractor = universal_exe
+                        else:
+                            # Último fallback a rt11extract_cli (solo RT-11)
+                            extractor = bundle_cli_dir / "rt11extract_cli"
+                            if not extractor.exists():
+                                raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
                 else:
                     # En modo desarrollo usar rt11extract desde helper
                     rt11extract_path = get_rt11extract_cli_path()
@@ -542,7 +555,9 @@ class RT11ExtractGUI:
                         raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
                     extractor = rt11extract_path
                 
+            # Build command for executable
             cmd = [str(extractor), '-o', str(self.output_dir), '-v', self.current_file]
+            
             kwargs = self._get_subprocess_kwargs()
             result = subprocess.run(cmd, **kwargs)
             
