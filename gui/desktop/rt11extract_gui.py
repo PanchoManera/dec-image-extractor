@@ -358,11 +358,11 @@ class RT11ExtractGUI:
                 # En macOS/Linux usar rt11extract_universal como Windows (maneja todos los tipos)
                 bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
                 if getattr(sys, 'frozen', False) and bundle_cli_dir.exists():
-                    # Usar rt11extract_universal que maneja RT-11, Unix, ODS-1 automáticamente
-                    extractor = bundle_cli_dir / "rt11extract_universal"
+                    # Usar universal_extractor que maneja RT-11, Unix, ODS-1 automáticamente (como Windows)
+                    extractor = bundle_cli_dir / "universal_extractor"
                     if not extractor.exists():
-                        # Fallback a rt11extract_cli
-                        extractor = bundle_cli_dir / "rt11extract_cli"
+                        # Fallback a rt11extract_universal
+                        extractor = bundle_cli_dir / "rt11extract_universal"
                         if not extractor.exists():
                             raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
                 else:
@@ -528,11 +528,11 @@ class RT11ExtractGUI:
                 # En macOS/Linux usar rt11extract_universal como Windows (mismo que scan)
                 bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
                 if getattr(sys, 'frozen', False) and bundle_cli_dir.exists():
-                    # Usar rt11extract_universal que maneja RT-11, Unix, ODS-1 automáticamente
-                    extractor = bundle_cli_dir / "rt11extract_universal"
+                    # Usar universal_extractor que maneja RT-11, Unix, ODS-1 automáticamente (como Windows)
+                    extractor = bundle_cli_dir / "universal_extractor"
                     if not extractor.exists():
-                        # Fallback a rt11extract_cli
-                        extractor = bundle_cli_dir / "rt11extract_cli"
+                        # Fallback a rt11extract_universal
+                        extractor = bundle_cli_dir / "rt11extract_universal"
                         if not extractor.exists():
                             raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
                 else:
