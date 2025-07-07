@@ -201,6 +201,8 @@ jobs:
         
         # Create symlink rt11extract -> rt11extract_cli for universal_extractor compatibility
         if [ -f "$cli_dir/rt11extract_cli" ]; then
+          # Remove existing symlink/file if it exists
+          rm -f "$cli_dir/rt11extract"
           ln -s rt11extract_cli "$cli_dir/rt11extract"
           echo "✓ Created symlink rt11extract -> rt11extract_cli"
         fi
