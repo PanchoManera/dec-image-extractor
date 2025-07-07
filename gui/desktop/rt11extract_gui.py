@@ -505,8 +505,21 @@ class RT11ExtractGUI:
             self.progress_bar.config(mode='indeterminate')
             self.progress_bar.start()
             
-            # Use rt11extract for extraction
-            cmd = [str(rt11extract_path), self.current_file, '-o', str(self.output_dir), '-v']
+            # Use same extractor as scan thread - platform specific
+            exe_dir = Path(sys.executable).parent
+            
+            if sys.platform.startswith('win'):
+                # En Windows usar rt11extract_universal.exe (mismo que scan)
+                extractor = exe_dir / "rt11extract_universal.exe"
+                if not extractor.exists():
+                    raise FileNotFoundError(f"RT11 Universal extractor not found at: {extractor}")
+            else:
+                # En macOS/Linux usar lo que encontró get_rt11extract_cli_path()
+                if not rt11extract_path or not rt11extract_path.exists():
+                    raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
+                extractor = rt11extract_path
+                
+            cmd = [str(extractor), self.current_file, '-o', str(self.output_dir), '-v']
             kwargs = self._get_subprocess_kwargs()
             result = subprocess.run(cmd, **kwargs)
             
