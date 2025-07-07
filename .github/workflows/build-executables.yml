@@ -24,7 +24,20 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pyinstaller pillow
+        pip install -r requirements.txt
+    
+    - name: Verify project structure
+      run: |
+        Write-Host "Verifying project structure..."
+        if (-not (Test-Path "backend/extractors")) {
+            Write-Error "Backend extractors directory not found"
+            exit 1
+        }
+        if (-not (Test-Path "gui/desktop/rt11extract_gui.py")) {
+            Write-Error "GUI script not found"
+            exit 1
+        }
+        Write-Host "Project structure verified"
     
     - name: Build Windows executables with complete backend
       run: |
