@@ -25,16 +25,17 @@ filesystems_dir = backend_dir / 'filesystems'
 sys.path.insert(0, str(filesystems_dir))
 
 # Import detection functions from each extractor
+from backend.utils.bundle_paths import get_rt11extract_path
+
 def detect_rt11_filesystem(path):
     """Detect RT-11 filesystem using CLI extractor"""
     try:
-        # Use the same rt11extract backend that the GUI uses
-        script_dir = Path(__file__).parent  # backend/extractors/
-        rt11extract_path = script_dir / 'rt11extract'
+        # Use helper to find path
+        rt11extract_path = get_rt11extract_path()
         
         # Convert path to absolute path to avoid working directory issues
         abs_path = os.path.abspath(path)
-        cmd = [sys.executable, str(rt11extract_path), abs_path, '-l']
+        cmd = [str(rt11extract_path), abs_path, '-l']
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         # Debug output
@@ -149,13 +150,12 @@ def run_extractor(extractor_script: str, image_path: str, args: argparse.Namespa
     
     # Special handling for RT-11 - use same backend as GUI
     if 'rt11' in extractor_script:
-        # Use the same rt11extract backend that the GUI uses
-        script_dir = Path(__file__).parent  # backend/extractors/
-        rt11extract_path = script_dir / 'rt11extract'
+        # Use helper to find path
+        rt11extract_path = get_rt11extract_path()
         
         # Convert path to absolute path to avoid working directory issues
         abs_image_path = os.path.abspath(image_path)
-        cmd = [sys.executable, str(rt11extract_path), abs_image_path]
+        cmd = [str(rt11extract_path), abs_image_path]
         
         # Add RT-11 specific arguments
         if args.list:

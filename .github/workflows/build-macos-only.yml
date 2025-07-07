@@ -169,9 +169,11 @@ jobs:
         echo "=== Creating macOS bundle ==="
         
         # Create bundle directory structure
-        bundle_dir="RT11Extractor-macOS"
+        bundle_dir="RT11ExtractGUI.app"
         cli_dir="$bundle_dir/Contents/Frameworks/cli"
         mkdir -p "$cli_dir"
+        mkdir -p "$bundle_dir/Contents/MacOS"
+        mkdir -p "$bundle_dir/Contents/Resources"
         
         # Copy CLI tools
         for tool in RT11Extract rt11extract_universal universal_extractor imd2raw; do
@@ -186,15 +188,41 @@ jobs:
         
         # Copy GUI
         if [ -f "dist/RT11ExtractGUI" ]; then
-          cp "dist/RT11ExtractGUI" RT11Extractor-macOS/
-          chmod +x "RT11Extractor-macOS/RT11ExtractGUI"
+          cp "dist/RT11ExtractGUI" "$bundle_dir/Contents/MacOS/"
+          chmod +x "$bundle_dir/Contents/MacOS/RT11ExtractGUI"
           echo "✓ Copied RT11ExtractGUI"
         elif [ -d "dist/RT11ExtractGUI.app" ]; then
-          cp -r "dist/RT11ExtractGUI.app" RT11Extractor-macOS/
-          echo "✓ Copied RT11ExtractGUI.app"
+          cp -r "dist/RT11ExtractGUI.app"/* "$bundle_dir/"
+          echo "✓ Copied RT11ExtractGUI.app contents"
         else
           echo "✗ GUI not found in dist/"
         fi
+        
+        # Create Info.plist
+        cat > "$bundle_dir/Contents/Info.plist" << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleExecutable</key>
+            <string>RT11ExtractGUI</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.pancho.rt11extractor</string>
+            <key>CFBundleName</key>
+            <string>RT11 Extractor</string>
+            <key>CFBundleVersion</key>
+            <string>1.0</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+        </dict>
+        </plist>
+        EOF
+        
+        # Create package directory and copy bundle
+        mkdir -p RT11Extractor-macOS
+        cp -r "$bundle_dir" RT11Extractor-macOS/
         
         # Copy documentation
         cp README.md RT11Extractor-macOS/ || echo "README.md not found"
