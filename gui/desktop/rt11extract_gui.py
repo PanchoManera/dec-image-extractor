@@ -355,12 +355,23 @@ class RT11ExtractGUI:
                 if not extractor.exists():
                     raise FileNotFoundError(f"RT11 Universal extractor not found at: {extractor}")
             else:
-                # En macOS/Linux usar lo que encontró get_rt11extract_cli_path()
-                if not rt11extract_path or not rt11extract_path.exists():
-                    raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
-                extractor = rt11extract_path
+                # En macOS/Linux usar universal_extractor que maneja todos los tipos
+                bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
+                if getattr(sys, 'frozen', False) and bundle_cli_dir.exists():
+                    # Usar universal_extractor que puede manejar RT-11, Unix, ODS-1
+                    extractor = bundle_cli_dir / "universal_extractor"
+                    if not extractor.exists():
+                        # Fallback a rt11extract_cli
+                        extractor = bundle_cli_dir / "rt11extract_cli"
+                        if not extractor.exists():
+                            raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
+                else:
+                    # En modo desarrollo usar rt11extract_path
+                    if not rt11extract_path or not rt11extract_path.exists():
+                        raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
+                    extractor = rt11extract_path
                 
-            cmd = [str(extractor), self.current_file, '-o', str(self.temp_dir), '-v']
+            cmd = [str(extractor), '-o', str(self.temp_dir), '-v', self.current_file]
             
             # Run command
             kwargs = self._get_subprocess_kwargs()
@@ -514,12 +525,23 @@ class RT11ExtractGUI:
                 if not extractor.exists():
                     raise FileNotFoundError(f"RT11 Universal extractor not found at: {extractor}")
             else:
-                # En macOS/Linux usar lo que encontró get_rt11extract_cli_path()
-                if not rt11extract_path or not rt11extract_path.exists():
-                    raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
-                extractor = rt11extract_path
+                # En macOS/Linux usar universal_extractor que maneja todos los tipos (mismo que scan)
+                bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
+                if getattr(sys, 'frozen', False) and bundle_cli_dir.exists():
+                    # Usar universal_extractor que puede manejar RT-11, Unix, ODS-1
+                    extractor = bundle_cli_dir / "universal_extractor"
+                    if not extractor.exists():
+                        # Fallback a rt11extract_cli
+                        extractor = bundle_cli_dir / "rt11extract_cli"
+                        if not extractor.exists():
+                            raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
+                else:
+                    # En modo desarrollo usar rt11extract_path
+                    if not rt11extract_path or not rt11extract_path.exists():
+                        raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
+                    extractor = rt11extract_path
                 
-            cmd = [str(extractor), self.current_file, '-o', str(self.output_dir), '-v']
+            cmd = [str(extractor), '-o', str(self.output_dir), '-v', self.current_file]
             kwargs = self._get_subprocess_kwargs()
             result = subprocess.run(cmd, **kwargs)
             
