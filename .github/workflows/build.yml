@@ -86,14 +86,14 @@ jobs:
 
     - name: Upload Windows Artifact
       if: matrix.os == 'windows-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: RT11Extract-Windows
         path: RT11Extract-Windows.zip
 
     - name: Upload macOS Artifact
       if: matrix.os == 'macos-latest'
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: RT11Extract-macOS
         path: RT11Extract-macOS.dmg
