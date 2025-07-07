@@ -371,7 +371,7 @@ class RT11ExtractGUI:
                         raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
                     extractor = rt11extract_path
                 
-            cmd = [str(extractor), self.current_file, '-o', str(self.temp_dir), '-v']
+            cmd = [str(extractor), '-l', '-o', str(self.temp_dir), '-v', self.current_file]
             
             # Run command
             kwargs = self._get_subprocess_kwargs()
@@ -542,7 +542,7 @@ class RT11ExtractGUI:
                         raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
                     extractor = rt11extract_path
                 
-            cmd = [str(extractor), self.current_file, '-o', str(self.output_dir), '-v']
+            cmd = [str(extractor), '-o', str(self.output_dir), '-v', self.current_file]
             kwargs = self._get_subprocess_kwargs()
             result = subprocess.run(cmd, **kwargs)
             

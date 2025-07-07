@@ -254,6 +254,39 @@ jobs:
         mkdir -p RT11Extractor-macOS
         cp -r "$bundle_dir" RT11Extractor-macOS/
         
+        # Create quarantine fix script
+        cat > RT11Extractor-macOS/fix_quarantine.sh << 'EOF'
+        #!/bin/bash
+        echo "RT-11 Extractor - macOS Quarantine Fix"
+        echo "======================================"
+        echo
+        echo "This script removes macOS quarantine attributes that prevent"
+        echo "the app from opening on first run."
+        echo
+        echo "You may be prompted for your password (sudo required)."
+        echo
+        read -p "Press Enter to continue..."
+        
+        # Get the directory where this script is located
+        SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+        APP_PATH="$SCRIPT_DIR/RT11ExtractGUI.app"
+        
+        if [ -d "$APP_PATH" ]; then
+            echo "Removing quarantine attributes from RT11ExtractGUI.app..."
+            sudo xattr -rd com.apple.quarantine "$APP_PATH"
+            echo "✅ Done! You can now open RT11ExtractGUI.app normally."
+        else
+            echo "❌ Error: RT11ExtractGUI.app not found at $APP_PATH"
+            exit 1
+        fi
+        
+        echo
+        echo "The app should now open without security warnings."
+        EOF
+        
+        # Make the script executable
+        chmod +x RT11Extractor-macOS/fix_quarantine.sh
+        
         # Copy documentation
         cp README.md RT11Extractor-macOS/ || echo "README.md not found"
         
