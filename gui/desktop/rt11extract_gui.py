@@ -52,7 +52,7 @@ def get_rt11extract_cli_path():
                     
         elif sys.platform == 'darwin':
             # macOS: Check bundled CLI tools directory
-            bundle_cli_dir = exe_dir.parent / "cli"
+            bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
             if bundle_cli_dir.exists():
                 cli_options = [
                     "rt11extract_cli",       # Main CLI
@@ -95,8 +95,8 @@ def get_imd2raw_path():
             if imd_path.exists():
                 return imd_path
         elif sys.platform == 'darwin':
-            # macOS: imd2raw debe estar en Contents/cli/
-            bundle_cli_dir = exe_dir.parent / "cli"
+            # macOS: imd2raw debe estar en Contents/Frameworks/cli/
+            bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
             if bundle_cli_dir.exists():
                 cli_options = [
                     "imd2raw",    # Nombre principal
@@ -271,9 +271,9 @@ class RT11ExtractGUI:
         # In compiled mode, set proper working directory
         if getattr(sys, 'frozen', False):
             if sys.platform == 'darwin':
-                # For macOS bundle, CLIs are in Contents/cli/
+                # For macOS bundle, CLIs are in Contents/Frameworks/cli/
                 exe_path = Path(sys.executable)
-                cli_dir = exe_path.parent.parent / "cli"
+                cli_dir = exe_path.parent.parent / "Frameworks" / "cli"
                 if cli_dir.exists():
                     kwargs['cwd'] = str(cli_dir)
             else:
