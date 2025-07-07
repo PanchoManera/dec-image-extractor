@@ -24,35 +24,66 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller pillow
+    
+    - name: Verify project structure (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        Write-Host "Verifying project structure..."
+        if (-not (Test-Path "backend/extractors")) {
+          Write-Error "Backend extractors directory not found"
+          exit 1
+        }
+        if (-not (Test-Path "gui/desktop/rt11extract_gui.py")) {
+          Write-Error "GUI script not found"
+          exit 1
+        }
+        Write-Host "Project structure verified"
+    
+    - name: Verify project structure (macOS)
+      if: matrix.os == 'macos-latest'
+      run: |
+        echo "Verifying project structure..."
+        if [ ! -d "backend/extractors" ]; then
+          echo "ERROR: Backend extractors directory not found"
+          exit 1
+        fi
+        if [ ! -f "gui/desktop/rt11extract_gui.py" ]; then
+          echo "ERROR: GUI script not found"
+          exit 1
+        fi
+        echo "Project structure verified"
 
     - name: Build Windows Executables
       if: matrix.os == 'windows-latest'
       run: |
-        mkdir -p RT11Extract-Windows
+        New-Item -ItemType Directory -Force -Path RT11Extract-Windows
         
-        # Build CLI tools
-        pyinstaller --onefile --name RT11Extract --paths backend --paths . backend/extractors/rt11extract
-        pyinstaller --onefile --name rt11extract_universal --paths backend --paths . backend/extractors/rt11extract_universal
-        pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py
-        pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
+        Write-Host "Building CLI tools..."
+        if (Test-Path "backend/extractors/rt11extract") {
+          pyinstaller --onefile --name RT11Extract --paths backend --paths . backend/extractors/rt11extract
+        }
+        if (Test-Path "backend/extractors/rt11extract_universal") {
+          pyinstaller --onefile --name rt11extract_universal --paths backend --paths . backend/extractors/rt11extract_universal
+        }
+        if (Test-Path "backend/extractors/universal_extractor.py") {
+          pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py
+        }
+        if (Test-Path "backend/image_converters/imd2raw.py") {
+          pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
+        }
         
-        # Build GUI
-        pyinstaller --onefile --windowed --icon=rt11_icon.ico --name RT11ExtractGUI --paths backend --paths . \
-          --add-data "backend/extractors;backend/extractors" \
-          --add-data "backend/filesystems;backend/filesystems" \
-          gui/desktop/rt11extract_gui.py
+        Write-Host "Building GUI..."
+        pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths . --add-data "backend/extractors;backend/extractors" --add-data "backend/filesystems;backend/filesystems" gui/desktop/rt11extract_gui.py
         
-        # Copy all executables
-        copy dist\RT11Extract.exe RT11Extract-Windows\
-        copy dist\rt11extract_universal.exe RT11Extract-Windows\
-        copy dist\universal_extractor.exe RT11Extract-Windows\
-        copy dist\imd2raw.exe RT11Extract-Windows\
-        copy dist\RT11ExtractGUI.exe RT11Extract-Windows\
-        copy rt11_icon.ico RT11Extract-Windows\
+        Write-Host "Copying executables..."
+        if (Test-Path "dist/RT11Extract.exe") { Copy-Item "dist/RT11Extract.exe" "RT11Extract-Windows/" }
+        if (Test-Path "dist/rt11extract_universal.exe") { Copy-Item "dist/rt11extract_universal.exe" "RT11Extract-Windows/" }
+        if (Test-Path "dist/universal_extractor.exe") { Copy-Item "dist/universal_extractor.exe" "RT11Extract-Windows/" }
+        if (Test-Path "dist/imd2raw.exe") { Copy-Item "dist/imd2raw.exe" "RT11Extract-Windows/" }
+        if (Test-Path "dist/RT11ExtractGUI.exe") { Copy-Item "dist/RT11ExtractGUI.exe" "RT11Extract-Windows/" }
         
-        # Create ZIP
-        7z a RT11Extract-Windows.zip RT11Extract-Windows\*
+        Write-Host "Creating package..."
+        Compress-Archive -Path "RT11Extract-Windows/*" -DestinationPath "RT11Extract-Windows.zip"
 
     - name: Build macOS Executables
       if: matrix.os == 'macos-latest'
