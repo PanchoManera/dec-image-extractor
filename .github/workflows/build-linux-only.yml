@@ -70,7 +70,7 @@ jobs:
         echo "Updating package lists..."
         sudo apt-get update
         echo "Installing Linux dependencies..."
-        sudo apt-get install -y build-essential libgl1 libglib2.0-0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
+        sudo apt-get install -y build-essential libgl1 libglib2.0-0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0 python3-tk
         echo "Linux dependencies installed successfully"
 
     - name: Build Linux Executables (x64)
@@ -101,10 +101,11 @@ jobs:
         
         # Build GUI with CLI tools included (exactly like macOS)
         echo "Building GUI executable..."
-        pyinstaller --onefile --name RT11ExtractGUI --paths backend --paths . \
+pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths . \
           --add-data "backend/extractors:backend/extractors" \
           --add-data "backend/filesystems:backend/filesystems" \
           --add-data "cli:cli" \
+          --hidden-import tkinter \
           gui/desktop/rt11extract_gui.py
         
         echo "Creating package directory structure..."
@@ -177,6 +178,7 @@ jobs:
             libxcb-render-util0 \
             libxcb-xinerama0 \
             libxcb-xfixes0 \
+            python3-tk \
             && rm -rf /var/lib/apt/lists/*
         
         # Set working directory
@@ -206,7 +208,7 @@ jobs:
             echo 'cp dist/imd2raw cli/' >> build.sh && \
             echo 'chmod +x cli/*' >> build.sh && \
             echo 'echo "Building GUI executable..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name RT11ExtractGUI --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --add-data "cli:cli" gui/desktop/rt11extract_gui.py' >> build.sh && \
+            echo 'pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --add-data "cli:cli" --hidden-import tkinter gui/desktop/rt11extract_gui.py' >> build.sh && \
             chmod +x build.sh
         
         # Run the build
