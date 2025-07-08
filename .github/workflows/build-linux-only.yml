@@ -101,7 +101,7 @@ jobs:
         
         # Build GUI with CLI tools included (exactly like macOS)
         echo "Building GUI executable..."
-pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths . \
+        pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths . \
           --add-data "backend/extractors:backend/extractors" \
           --add-data "backend/filesystems:backend/filesystems" \
           --add-data "cli:cli" \
