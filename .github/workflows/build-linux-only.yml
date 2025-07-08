@@ -106,6 +106,53 @@ jobs:
           --add-data "backend/filesystems:backend/filesystems" \
           --add-data "cli:cli" \
           gui/desktop/rt11extract_gui.py
+        
+        echo "Creating package directory structure..."
+        # Create directory structure like macOS but for Linux
+        mkdir -p "RT11Extract-Linux"
+        
+        # Copy the main GUI executable
+        echo "Copying GUI executable..."
+        cp dist/RT11ExtractGUI "RT11Extract-Linux/"
+        chmod +x "RT11Extract-Linux/RT11ExtractGUI"
+        
+        # Copy CLI tools to the same directory (like macOS approach)
+        echo "Copying CLI tools..."
+        cp cli/* "RT11Extract-Linux/"
+        
+        # Create README for Linux
+        cat > "RT11Extract-Linux/README.txt" << 'EOF'
+        RT11 Extract Linux Distribution
+        
+        This package contains the RT11 Extractor with GUI and CLI tools.
+        The GUI automatically detects and uses the CLI tools in the same directory.
+        
+        Included tools:
+        - RT11ExtractGUI: Graphical interface (main application)
+        - rt11extract: RT-11 filesystem extractor
+        - rt11extract_universal: Universal filesystem extractor (recommended)
+        - universal_extractor: Universal image extractor
+        - imd2raw: ImageDisk (IMD) to RAW converter
+        
+        Usage:
+        GUI Mode: ./RT11ExtractGUI
+        CLI Mode: ./rt11extract_universal <disk_image>
+        
+        The GUI will automatically find and use the CLI tools from the same directory.
+        All tools support --help for detailed usage information.
+        
+        Supported formats: .dsk, .img, .imd disk images
+        Supported filesystems: RT-11, Unix PDP-11, RSX-11M+ (ODS-1)
+        EOF
+        
+        # Create tar.gz package
+        echo "Creating final package..."
+        tar -czf "RT11Extract-Linux.tar.gz" "RT11Extract-Linux"
+        echo "Package created: RT11Extract-Linux.tar.gz"
+        echo "Files in current directory after packaging:"
+        ls -la
+        echo "Files in RT11Extract-Linux directory:"
+        ls -la "RT11Extract-Linux"
 
     - name: Build Linux Executables (ARM64)
       if: matrix.arch == 'arm64'
