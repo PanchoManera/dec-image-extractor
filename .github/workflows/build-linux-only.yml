@@ -220,6 +220,8 @@ jobs:
         echo "ARM64 build completed using Docker"
         
         echo "Creating package directory structure..."
+        # Define architecture suffix for ARM64
+        ARCH_SUFFIX="-arm64"
         # Create directory structure like macOS but for Linux
         mkdir -p "RT11Extract-Linux${ARCH_SUFFIX}"
         
