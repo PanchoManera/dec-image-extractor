@@ -15,12 +15,18 @@ jobs:
             runner: ubuntu-latest
           - os: ubuntu-latest
             arch: arm64
-            runner: ubuntu-24.04-arm64
+            runner: ubuntu-latest
 
     runs-on: ${{ matrix.runner }}
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Set up QEMU for ARM64
+      if: matrix.arch == 'arm64'
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: linux/arm64
 
     - name: Debug runner info
       run: |
@@ -67,18 +73,12 @@ jobs:
         sudo apt-get install -y build-essential libgl1 libglib2.0-0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
         echo "Linux dependencies installed successfully"
 
-    - name: Build Linux Executables
+    - name: Build Linux Executables (x64)
+      if: matrix.arch == 'x64'
       timeout-minutes: 15
       run: |
-        ARCH_SUFFIX=""
-        if [ "${{ matrix.arch }}" = "arm64" ]; then
-          ARCH_SUFFIX="-arm64"
-        fi
-        
-        echo "Starting build for Linux ${{ matrix.arch }}..."
+        echo "Starting build for Linux x64..."
         mkdir -p cli
-        
-        # Using native ARM64 runner - no cross-compilation needed
         
         # Build CLI tools (similar to macOS approach)
         echo "Building rt11extract..."
@@ -106,6 +106,71 @@ jobs:
           --add-data "backend/filesystems:backend/filesystems" \
           --add-data "cli:cli" \
           gui/desktop/rt11extract_gui.py
+
+    - name: Build Linux Executables (ARM64)
+      if: matrix.arch == 'arm64'
+      timeout-minutes: 20
+      run: |
+        echo "Starting build for Linux ARM64 using Docker..."
+        
+        # Create a Dockerfile for ARM64 build
+        cat > Dockerfile.arm64 << 'EOF'
+        FROM --platform=linux/arm64 python:3.11-slim
+        
+        # Install system dependencies
+        RUN apt-get update && apt-get install -y \
+            build-essential \
+            libgl1 \
+            libglib2.0-0 \
+            libxkbcommon-x11-0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-xinerama0 \
+            libxcb-xfixes0 \
+            && rm -rf /var/lib/apt/lists/*
+        
+        # Set working directory
+        WORKDIR /app
+        
+        # Copy requirements and install Python dependencies
+        COPY requirements.txt .
+        RUN pip install --no-cache-dir -r requirements.txt
+        
+        # Copy source code
+        COPY . .
+        
+        # Create build script
+        RUN echo '#!/bin/bash' > build.sh && \
+            echo 'mkdir -p cli' >> build.sh && \
+            echo 'echo "Building rt11extract..."' >> build.sh && \
+            echo 'pyinstaller --onefile --name rt11extract --paths backend --paths . backend/extractors/rt11extract' >> build.sh && \
+            echo 'echo "Building rt11extract_universal..."' >> build.sh && \
+            echo 'pyinstaller --onefile --name rt11extract_universal --paths backend --paths . backend/extractors/rt11extract_universal' >> build.sh && \
+            echo 'echo "Building universal_extractor..."' >> build.sh && \
+            echo 'pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py' >> build.sh && \
+            echo 'echo "Building imd2raw..."' >> build.sh && \
+            echo 'pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py' >> build.sh && \
+            echo 'cp dist/rt11extract cli/' >> build.sh && \
+            echo 'cp dist/rt11extract_universal cli/' >> build.sh && \
+            echo 'cp dist/universal_extractor cli/' >> build.sh && \
+            echo 'cp dist/imd2raw cli/' >> build.sh && \
+            echo 'chmod +x cli/*' >> build.sh && \
+            echo 'echo "Building GUI executable..."' >> build.sh && \
+            echo 'pyinstaller --onefile --name RT11ExtractGUI --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --add-data "cli:cli" gui/desktop/rt11extract_gui.py' >> build.sh && \
+            chmod +x build.sh
+        
+        # Run the build
+        CMD ["./build.sh"]
+        EOF
+        
+        # Build the Docker image and run the build
+        docker build --platform linux/arm64 -f Dockerfile.arm64 -t rt11extract-arm64-builder .
+        docker run --platform linux/arm64 --rm -v $(pwd)/dist:/app/dist -v $(pwd)/cli:/app/cli rt11extract-arm64-builder
+        
+        echo "ARM64 build completed using Docker"
         
         echo "Creating package directory structure..."
         # Create directory structure like macOS but for Linux
