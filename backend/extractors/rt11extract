@@ -31,57 +31,45 @@ def detect_filesystem_type(image_path: str) -> str:
     Detecta el tipo de filesystem en la imagen
     Retorna 'rt11', 'unix', 'ods1', o 'unknown'
     """
-    script_dir = get_script_dir()
     
     # Probar ODS-1/Files-11 PRIMERO (es más específico que RT-11)
     try:
-        # Buscar en backend/filesystems/
-        filesystems_dir = script_dir.parent / "filesystems"
-        ods1_script = filesystems_dir / "ods1_extractor_v2.py"
-        if ods1_script.exists():
-            result = subprocess.run(
-                [sys.executable, str(ods1_script), image_path, "-a"],
-                capture_output=True, text=True, timeout=30
-            )
-            
-            if result.returncode == 0 and ("Volume Name:" in result.stdout or "RSX" in result.stdout or "Files-11" in result.stdout):
+        # Importar directamente el módulo ODS-1
+        if getattr(sys, 'frozen', False):
+            # En binario compilado, usar import directo
+            from backend.filesystems.ods1_extractor_v2 import ODS1Extractor
+        else:
+            # En script, añadir path
+            sys.path.insert(0, str(Path(__file__).parent.parent / "filesystems"))
+            from ods1_extractor_v2 import ODS1Extractor
+        
+        extractor = ODS1Extractor(image_path)
+        if extractor.parse_home_block():
+            # Verificar estructura válida ODS-1
+            if extractor.volume_structure_level == 0x0101:
                 return "ods1"
-    except:
+    except Exception as e:
+        # Si falla la importación o detección, continuar
         pass
     
-    # Probar RT-11 después
-    try:
-        rt11_script = script_dir / "rt11extract_smart.py"
-        if rt11_script.exists():
-            result = subprocess.run(
-                [sys.executable, str(rt11_script), image_path, "-d"],
-                capture_output=True, text=True, timeout=30
-            )
-            
-            if result.returncode == 0 and "RT-11" in result.stdout:
-                return "rt11"
-    except:
-        pass
-    
-    # Probar Unix PDP-11
-    try:
-        # Buscar en backend/filesystems/
-        filesystems_dir = script_dir.parent / "filesystems"
-        unix_script = filesystems_dir / "unix_pdp11_extractor.py" 
-        if unix_script.exists():
-            result = subprocess.run(
-                [sys.executable, str(unix_script), image_path, "--detect-only"],
-                capture_output=True, text=True, timeout=30
-            )
-            
-            if result.returncode == 0 and "Unix" in result.stdout:
-                return "unix"
-    except:
-        pass
-    
-    # Detección manual básica
+    # Detección manual básica para todos los tipos
     try:
         with open(image_path, 'rb') as f:
+            # Leer home block (LBN 1 para ODS-1)
+            f.seek(512)  # LBN 1
+            home_block = f.read(512)
+            
+            # Verificar ODS-1 por estructura de home block
+            if len(home_block) >= 26:
+                # Comprobar signature ODS-1 en home block
+                structure_level = int.from_bytes(home_block[12:14], byteorder='little')
+                if structure_level == 0x0101:  # ODS-1 signature
+                    volume_name = home_block[14:26].rstrip(b'\x00').decode('ascii', errors='ignore')
+                    # Verificar si es RSX o VMS
+                    if 'RSX' in volume_name.upper() or volume_name:
+                        return "ods1"
+            
+            # Probar RT-11 patterns
             f.seek(0)
             boot_block = f.read(512)
             f.seek(512)
@@ -95,7 +83,7 @@ def detect_filesystem_type(image_path: str) -> str:
             if any(pattern in boot_block + block1 for pattern in [b'bin', b'etc', b'usr', b'dev']):
                 return "unix"
                 
-    except:
+    except Exception as e:
         pass
     
     # Por defecto, asumir RT-11 para compatibilidad
@@ -159,32 +147,34 @@ def call_unix_extractor(args):
 
 def call_ods1_extractor(args):
     """Llama al extractor ODS-1/Files-11 (RSX-11, VMS)"""
-    script_dir = get_script_dir()
-    # Buscar en backend/filesystems/
-    filesystems_dir = script_dir.parent / "filesystems"
-    ods1_script = filesystems_dir / "ods1_extractor_v2.py"
-    
-    if not ods1_script.exists():
-        print(f"Error: ODS-1 extractor not found at {ods1_script}")
-        return 1
-    
-    # Mapear parámetros de rt11extract a ods1_extractor_v2
-    cmd = [sys.executable, str(ods1_script), args.image]
-    
-    if args.list:
-        # ODS-1 usa -a para analysis mode (similar a -l)
-        cmd.append("-a")
-    else:
-        cmd.extend(["-o", args.output])
-    
-    if args.verbose:
-        # ODS-1 no tiene flag verbose separado, pero puede dar más info
-        pass
-    
     try:
-        # Ejecutar con la misma salida que el original
-        result = subprocess.run(cmd, capture_output=False)
-        return result.returncode
+        # Importar directamente el módulo ODS-1
+        if getattr(sys, 'frozen', False):
+            # En binario compilado, usar import directo
+            from backend.filesystems.ods1_extractor_v2 import ODS1Extractor
+        else:
+            # En script, añadir path
+            sys.path.insert(0, str(Path(__file__).parent.parent / "filesystems"))
+            from ods1_extractor_v2 import ODS1Extractor
+        
+        # Crear extractor
+        extractor = ODS1Extractor(args.image)
+        
+        if args.list:
+            # Modo análisis (equivalente a -a)
+            if not extractor.analyze_volume():
+                print("ERROR: Could not analyze ODS-1 volume")
+                return 1
+            extractor.list_files()
+        else:
+            # Modo extracción
+            if not extractor.analyze_volume():
+                print("ERROR: Could not analyze ODS-1 volume")
+                return 1
+            extractor.extract_files(args.output)
+            
+        return 0
+        
     except Exception as e:
         print(f"Error running ODS-1 extractor: {e}")
         return 1

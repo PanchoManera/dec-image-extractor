@@ -135,14 +135,34 @@ jobs:
         ls -la backend/ || echo "Backend directory not found"
         
         # 1. Build all CLI tools (universal, rt11extract, rt11extract_universal)
-        echo "Building CLI extractor..."
-        pyinstaller --onefile --name "rt11extract_cli" --paths="." backend/extractors/rt11extract || {
+        echo "Building CLI extractor (rt11extract universal wrapper)..."
+        pyinstaller --onefile --name "rt11extract_cli" --paths="backend" --paths="." \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          --hidden-import="backend.extractors.rt11extract_smart" \
+          --hidden-import="backend.extractors.rt11extract_universal" \
+          --hidden-import="backend.filesystems.ods1_extractor_v2" \
+          --hidden-import="backend.filesystems.unix_pdp11_extractor" \
+          backend/extractors/rt11extract || {
           echo "CLI build failed, trying alternative approach..."
           cp backend/extractors/rt11extract rt11extract_cli
           chmod +x rt11extract_cli
           mkdir -p dist
           cp rt11extract_cli dist/
         }
+        
+        # Build rt11extract (same as rt11extract_cli but named rt11extract for GUI use)
+        echo "Building rt11extract (universal wrapper for GUI)..."
+        pyinstaller --onefile --name "rt11extract" --paths="backend" --paths="." \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          --hidden-import="backend.extractors.rt11extract_smart" \
+          --hidden-import="backend.extractors.rt11extract_universal" \
+          --hidden-import="backend.filesystems.ods1_extractor_v2" \
+          --hidden-import="backend.filesystems.unix_pdp11_extractor" \
+          backend/extractors/rt11extract || echo "rt11extract build failed"
         
         # Build rt11extract_universal
         echo "Building rt11extract_universal..."
@@ -203,7 +223,7 @@ jobs:
         
         # First, move all built CLIs to cli/ subdirectory
         mkdir -p cli_tools
-        for cli in rt11extract_cli rt11extract_universal universal_extractor imd2raw; do
+        for cli in rt11extract rt11extract_cli rt11extract_universal universal_extractor ods1_extractor imd2raw; do
             if [ -f "dist/$cli" ]; then
                 echo "Moving $cli to cli_tools/..."
                 cp "dist/$cli" "cli_tools/"
