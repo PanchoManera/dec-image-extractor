@@ -2,7 +2,7 @@ name: Build RT11 Extractor GUI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, feature/linux-builds ]
 
 jobs:
   build:
