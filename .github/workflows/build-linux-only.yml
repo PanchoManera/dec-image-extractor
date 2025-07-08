@@ -214,7 +214,10 @@ jobs:
         echo "Creating final package..."
         tar -czf "RT11Extract-Linux${ARCH_SUFFIX}.tar.gz" "RT11Extract-Linux${ARCH_SUFFIX}"
         echo "Package created: RT11Extract-Linux${ARCH_SUFFIX}.tar.gz"
-        ls -la "RT11Extract-Linux${ARCH_SUFFIX}.tar.gz"
+        echo "Files in current directory after packaging:"
+        ls -la
+        echo "Files in RT11Extract-Linux${ARCH_SUFFIX} directory:"
+        ls -la "RT11Extract-Linux${ARCH_SUFFIX}"
 
     - name: Upload Linux x64 Artifact
       if: matrix.arch == 'x64'
