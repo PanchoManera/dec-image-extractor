@@ -15,12 +15,21 @@ jobs:
             runner: ubuntu-latest
           - os: ubuntu-latest
             arch: arm64
-            runner: ubuntu-latest-arm64
+            runner: ubuntu-24.04-arm64
 
     runs-on: ${{ matrix.runner }}
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Debug runner info
+      run: |
+        echo "Runner info for ${{ matrix.arch }}:"
+        echo "OS: $(uname -a)"
+        echo "Architecture: $(uname -m)"
+        echo "CPU info:"
+        cat /proc/cpuinfo | grep -E "model name|Architecture" | head -5
+        echo "Expected architecture: ${{ matrix.arch }}"
 
     - name: Set up Python
       uses: actions/setup-python@v4
