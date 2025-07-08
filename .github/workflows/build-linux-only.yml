@@ -82,11 +82,33 @@ jobs:
         
         # Build CLI tools (similar to macOS approach)
         echo "Building rt11extract..."
-        pyinstaller --onefile --name rt11extract --paths backend --paths . backend/extractors/rt11extract
+        pyinstaller --onefile --name rt11extract --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          --hidden-import="backend.extractors.rt11extract_smart" \
+          --hidden-import="backend.extractors.rt11extract_universal" \
+          --hidden-import="backend.filesystems.ods1_extractor_v2" \
+          --hidden-import="backend.filesystems.unix_pdp11_extractor" \
+          backend/extractors/rt11extract
         echo "Building rt11extract_universal..."
-        pyinstaller --onefile --name rt11extract_universal --paths backend --paths . backend/extractors/rt11extract_universal
+        pyinstaller --onefile --name rt11extract_universal --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          backend/extractors/rt11extract_universal
         echo "Building universal_extractor..."
-        pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py
+        pyinstaller --onefile --name universal_extractor --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          backend/extractors/universal_extractor.py
+        echo "Building ods1_extractor (RSX-11M+ support)..."
+        pyinstaller --onefile --name ods1_extractor --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          backend/filesystems/ods1_extractor_v2.py
         echo "Building imd2raw..."
         pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
         
@@ -94,6 +116,7 @@ jobs:
         cp dist/rt11extract cli/
         cp dist/rt11extract_universal cli/
         cp dist/universal_extractor cli/
+        cp dist/ods1_extractor cli/
         cp dist/imd2raw cli/
         
         # Make CLIs executable
@@ -106,6 +129,12 @@ jobs:
           --add-data "backend/filesystems:backend/filesystems" \
           --add-data "cli:cli" \
           --hidden-import tkinter \
+          --hidden-import backend.extractors \
+          --hidden-import backend.filesystems \
+          --hidden-import backend.extractors.rt11extract_smart \
+          --hidden-import backend.extractors.rt11extract_universal \
+          --hidden-import backend.filesystems.ods1_extractor_v2 \
+          --hidden-import backend.filesystems.unix_pdp11_extractor \
           gui/desktop/rt11extract_gui.py
         
         echo "Creating package directory structure..."
@@ -133,6 +162,7 @@ jobs:
         - rt11extract: RT-11 filesystem extractor
         - rt11extract_universal: Universal filesystem extractor (recommended)
         - universal_extractor: Universal image extractor
+        - ods1_extractor: RSX-11M+ (ODS-1) filesystem extractor
         - imd2raw: ImageDisk (IMD) to RAW converter
         
         Usage:
@@ -195,20 +225,23 @@ jobs:
         RUN echo '#!/bin/bash' > build.sh && \
             echo 'mkdir -p cli' >> build.sh && \
             echo 'echo "Building rt11extract..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name rt11extract --paths backend --paths . backend/extractors/rt11extract' >> build.sh && \
+            echo 'pyinstaller --onefile --name rt11extract --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" --hidden-import="backend.extractors.rt11extract_smart" --hidden-import="backend.extractors.rt11extract_universal" --hidden-import="backend.filesystems.ods1_extractor_v2" --hidden-import="backend.filesystems.unix_pdp11_extractor" backend/extractors/rt11extract' >> build.sh && \
             echo 'echo "Building rt11extract_universal..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name rt11extract_universal --paths backend --paths . backend/extractors/rt11extract_universal' >> build.sh && \
+            echo 'pyinstaller --onefile --name rt11extract_universal --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" backend/extractors/rt11extract_universal' >> build.sh && \
             echo 'echo "Building universal_extractor..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py' >> build.sh && \
+            echo 'pyinstaller --onefile --name universal_extractor --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" backend/extractors/universal_extractor.py' >> build.sh && \
+            echo 'echo "Building ods1_extractor (RSX-11M+ support)..."' >> build.sh && \
+            echo 'pyinstaller --onefile --name ods1_extractor --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" backend/filesystems/ods1_extractor_v2.py' >> build.sh && \
             echo 'echo "Building imd2raw..."' >> build.sh && \
             echo 'pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py' >> build.sh && \
             echo 'cp dist/rt11extract cli/' >> build.sh && \
             echo 'cp dist/rt11extract_universal cli/' >> build.sh && \
             echo 'cp dist/universal_extractor cli/' >> build.sh && \
+            echo 'cp dist/ods1_extractor cli/' >> build.sh && \
             echo 'cp dist/imd2raw cli/' >> build.sh && \
             echo 'chmod +x cli/*' >> build.sh && \
             echo 'echo "Building GUI executable..."' >> build.sh && \
-            echo 'pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --add-data "cli:cli" --hidden-import tkinter gui/desktop/rt11extract_gui.py' >> build.sh && \
+            echo 'pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --add-data "cli:cli" --hidden-import tkinter --hidden-import backend.extractors --hidden-import backend.filesystems --hidden-import backend.extractors.rt11extract_smart --hidden-import backend.extractors.rt11extract_universal --hidden-import backend.filesystems.ods1_extractor_v2 --hidden-import backend.filesystems.unix_pdp11_extractor gui/desktop/rt11extract_gui.py' >> build.sh && \
             chmod +x build.sh
         
         # Run the build
@@ -248,6 +281,7 @@ jobs:
         - rt11extract: RT-11 filesystem extractor
         - rt11extract_universal: Universal filesystem extractor (recommended)
         - universal_extractor: Universal image extractor
+        - ods1_extractor: RSX-11M+ (ODS-1) filesystem extractor
         - imd2raw: ImageDisk (IMD) to RAW converter
         
         Usage:
