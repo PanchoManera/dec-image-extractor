@@ -73,6 +73,26 @@ def get_rt11extract_cli_path():
             print(f"ERROR: CLI not found in bundle at {bundle_cli_dir}")
             return None
             
+        else:
+            # Linux: Check same directory as GUI executable
+            cli_options = [
+                "rt11extract_universal", # Universal extractor (preferred)
+                "rt11extract",           # Universal wrapper 
+                "universal_extractor",   # Another universal option
+                "RT11Extract"           # Alternative name
+            ]
+            
+            for cli in cli_options:
+                cli_path = exe_dir / cli
+                if cli_path.exists():
+                    # Make it executable
+                    cli_path.chmod(cli_path.stat().st_mode | 0o755)
+                    return cli_path
+                    
+            # If not found in same directory, that's an error in frozen mode
+            print(f"ERROR: CLI not found in same directory as GUI at {exe_dir}")
+            return None
+            
     # Default: Try relative to script location
     script_paths = [
         Path(__file__).parent.parent.parent / "backend" / "extractors" / "rt11extract",
@@ -115,6 +135,24 @@ def get_imd2raw_path():
                         
             # Si no está en el bundle, es un error en macOS frozen
             print(f"ERROR: IMD2RAW not found in bundle at {bundle_cli_dir}")
+            return None
+        else:
+            # Linux: imd2raw en mismo directorio que GUI
+            cli_options = [
+                "imd2raw",    # Nombre principal
+                "IMD2RAW",    # Alternativo
+                "imd2dsk"     # Alternativo
+            ]
+            
+            for cli in cli_options:
+                cli_path = exe_dir / cli
+                if cli_path.exists():
+                    # Asegurar que sea ejecutable
+                    cli_path.chmod(cli_path.stat().st_mode | 0o755)
+                    return cli_path
+                    
+            # Si no está en el mismo directorio, es un error en Linux frozen
+            print(f"ERROR: IMD2RAW not found in same directory as GUI at {exe_dir}")
             return None
     else:
         # En modo desarrollo

@@ -43,12 +43,26 @@ jobs:
         name: RT11Extractor-macOS-Debug
         path: ./artifacts/
       continue-on-error: true
+        
+    - name: Download Linux x64 artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: RT11Extract-Linux
+        path: ./artifacts/
+      continue-on-error: true
+        
+    - name: Download Linux ARM64 artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: RT11Extract-Linux-arm64
+        path: ./artifacts/
+      continue-on-error: true
     
     - name: List available artifacts
       run: |
         echo "Available artifacts:"
         ls -la ./artifacts/ || echo "No artifacts directory found"
-        find . -name "*.zip" -o -name "*.dmg" -o -name "*.app" | head -10
+        find . -name "*.zip" -o -name "*.dmg" -o -name "*.app" -o -name "*.tar.gz" | head -10
     
     - name: Create Release
       id: create_release
@@ -70,6 +84,8 @@ jobs:
           - **Windows**: `RT11Extract-Windows.zip` - Complete Windows bundle with GUI and CLI tools
           - **macOS**: `RT11Extract-macOS.dmg` - Standard macOS bundle
           - **macOS Enhanced**: `RT11Extractor-macOS-Debug.zip` - Enhanced bundle with all extractors
+          - **Linux x64**: `RT11Extract-Linux.tar.gz` - Linux 64-bit bundle
+          - **Linux ARM64**: `RT11Extract-Linux-arm64.tar.gz` - Linux ARM64/AArch64 bundle
           
           ### Features
           - Universal GUI with automatic filesystem detection
@@ -119,6 +135,28 @@ jobs:
         asset_path: ./artifacts/RT11Extractor-macOS-Debug.zip
         asset_name: RT11Extractor-macOS-Enhanced.zip
         asset_content_type: application/zip
+        
+    - name: Upload Linux x64 Release Asset
+      if: hashFiles('./artifacts/RT11Extract-Linux.tar.gz') != ''
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/RT11Extract-Linux.tar.gz
+        asset_name: RT11Extract-Linux.tar.gz
+        asset_content_type: application/gzip
+        
+    - name: Upload Linux ARM64 Release Asset
+      if: hashFiles('./artifacts/RT11Extract-Linux-arm64.tar.gz') != ''
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/RT11Extract-Linux-arm64.tar.gz
+        asset_name: RT11Extract-Linux-arm64.tar.gz
+        asset_content_type: application/gzip
 
   trigger-builds:
     runs-on: ubuntu-latest

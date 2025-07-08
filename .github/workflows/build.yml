@@ -8,9 +8,21 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        include:
+          - os: windows-latest
+            arch: x64
+            runner: windows-latest
+          - os: macos-latest
+            arch: x64
+            runner: macos-latest
+          - os: ubuntu-latest
+            arch: x64
+            runner: ubuntu-latest
+          - os: ubuntu-latest
+            arch: arm64
+            runner: ubuntu-latest
 
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
 
     steps:
     - uses: actions/checkout@v4
@@ -19,6 +31,14 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
+
+    - name: Set up ARM64 environment (Linux)
+      if: matrix.os == 'ubuntu-latest' && matrix.arch == 'arm64'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+        export CC=aarch64-linux-gnu-gcc
+        export CXX=aarch64-linux-gnu-g++
 
     - name: Install dependencies
       run: |
@@ -43,6 +63,20 @@ jobs:
       if: matrix.os == 'macos-latest'
       run: |
         echo "Verifying project structure..."
+        if [ ! -d "backend/extractors" ]; then
+          echo "ERROR: Backend extractors directory not found"
+          exit 1
+        fi
+        if [ ! -f "gui/desktop/rt11extract_gui.py" ]; then
+          echo "ERROR: GUI script not found"
+          exit 1
+        fi
+        echo "Project structure verified"
+    
+    - name: Verify project structure (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        echo "Verifying project structure for Linux ${{ matrix.arch }}..."
         if [ ! -d "backend/extractors" ]; then
           echo "ERROR: Backend extractors directory not found"
           exit 1
@@ -115,6 +149,88 @@ jobs:
         # Create DMG
         hdiutil create -volname "RT11 Extract" -srcfolder dist/RT11ExtractGUI.app -ov -format UDZO RT11Extract-macOS.dmg
 
+    - name: Install Linux dependencies
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential libgl1-mesa-glx libglib2.0-0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
+
+    - name: Build Linux Executables
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        ARCH_SUFFIX=""
+        if [ "${{ matrix.arch }}" = "arm64" ]; then
+          ARCH_SUFFIX="-arm64"
+        fi
+        
+        mkdir -p cli
+        
+        # Set cross-compilation environment for ARM64
+        if [ "${{ matrix.arch }}" = "arm64" ]; then
+          export CC=aarch64-linux-gnu-gcc
+          export CXX=aarch64-linux-gnu-g++
+        fi
+        
+        # Build CLI tools (similar to macOS approach)
+        pyinstaller --onefile --name rt11extract --paths backend --paths . backend/extractors/rt11extract
+        pyinstaller --onefile --name rt11extract_universal --paths backend --paths . backend/extractors/rt11extract_universal
+        pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py
+        pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
+        
+        # Move CLIs to cli folder (like macOS)
+        cp dist/rt11extract cli/
+        cp dist/rt11extract_universal cli/
+        cp dist/universal_extractor cli/
+        cp dist/imd2raw cli/
+        
+        # Make CLIs executable
+        chmod +x cli/*
+        
+        # Build GUI with CLI tools included (exactly like macOS)
+        pyinstaller --onefile --name RT11ExtractGUI --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --add-data "cli:cli" \
+          gui/desktop/rt11extract_gui.py
+        
+        # Create directory structure like macOS but for Linux
+        mkdir -p "RT11Extract-Linux${ARCH_SUFFIX}"
+        
+        # Copy the main GUI executable
+        cp dist/RT11ExtractGUI "RT11Extract-Linux${ARCH_SUFFIX}/"
+        chmod +x "RT11Extract-Linux${ARCH_SUFFIX}/RT11ExtractGUI"
+        
+        # Copy CLI tools to the same directory (like macOS approach)
+        cp cli/* "RT11Extract-Linux${ARCH_SUFFIX}/"
+        
+        # Create README for Linux
+        cat > "RT11Extract-Linux${ARCH_SUFFIX}/README.txt" << 'EOF'
+        RT11 Extract Linux${{ matrix.arch == 'arm64' && ' ARM64' || '' }} Distribution
+        
+        This package contains the RT11 Extractor with GUI and CLI tools.
+        The GUI automatically detects and uses the CLI tools in the same directory.
+        
+        Included tools:
+        - RT11ExtractGUI: Graphical interface (main application)
+        - rt11extract: RT-11 filesystem extractor
+        - rt11extract_universal: Universal filesystem extractor (recommended)
+        - universal_extractor: Universal image extractor
+        - imd2raw: ImageDisk (IMD) to RAW converter
+        
+        Usage:
+        GUI Mode: ./RT11ExtractGUI
+        CLI Mode: ./rt11extract_universal <disk_image>
+        
+        The GUI will automatically find and use the CLI tools from the same directory.
+        All tools support --help for detailed usage information.
+        
+        Supported formats: .dsk, .img, .imd disk images
+        Supported filesystems: RT-11, Unix PDP-11, RSX-11M+ (ODS-1)
+        EOF
+        
+        # Create tar.gz package
+        tar -czf "RT11Extract-Linux${ARCH_SUFFIX}.tar.gz" "RT11Extract-Linux${ARCH_SUFFIX}"
+
     - name: Upload Windows Artifact
       if: matrix.os == 'windows-latest'
       uses: actions/upload-artifact@v4
@@ -128,3 +244,17 @@ jobs:
       with:
         name: RT11Extract-macOS
         path: RT11Extract-macOS.dmg
+
+    - name: Upload Linux x64 Artifact
+      if: matrix.os == 'ubuntu-latest' && matrix.arch == 'x64'
+      uses: actions/upload-artifact@v4
+      with:
+        name: RT11Extract-Linux
+        path: RT11Extract-Linux.tar.gz
+
+    - name: Upload Linux ARM64 Artifact
+      if: matrix.os == 'ubuntu-latest' && matrix.arch == 'arm64'
+      uses: actions/upload-artifact@v4
+      with:
+        name: RT11Extract-Linux-arm64
+        path: RT11Extract-Linux-arm64.tar.gz
