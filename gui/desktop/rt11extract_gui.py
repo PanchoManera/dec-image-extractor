@@ -348,35 +348,10 @@ class RT11ExtractGUI:
                 shutil.rmtree(self.temp_dir, ignore_errors=True)
             self.temp_dir = Path(tempfile.mkdtemp())
             
-            # Build command - prioritize universal extractors
-            exe_dir = Path(sys.executable).parent
-            
-            if sys.platform.startswith('win'):
-                # En Windows usar rt11extract_universal.exe
-                extractor = exe_dir / "rt11extract_universal.exe"
-                if not extractor.exists():
-                    raise FileNotFoundError(f"RT11 Universal extractor not found at: {extractor}")
-            else:
-                # En macOS/Linux usar extractores universales primero
-                bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
-                if getattr(sys, 'frozen', False) and bundle_cli_dir.exists():
-                    # Intentar usar rt11extract_universal primero (detecta ODS-1/RSX)
-                    extractor = bundle_cli_dir / "rt11extract_universal"
-                    if not extractor.exists():
-                        # Si no existe, usar universal_extractor compilado
-                        universal_exe = bundle_cli_dir / "universal_extractor"
-                        if universal_exe.exists():
-                            extractor = universal_exe
-                        else:
-                            # Último fallback a rt11extract_cli (solo RT-11)
-                            extractor = bundle_cli_dir / "rt11extract_cli"
-                            if not extractor.exists():
-                                raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
-                else:
-                    # En modo desarrollo usar rt11extract_path
-                    if not rt11extract_path or not rt11extract_path.exists():
-                        raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
-                    extractor = rt11extract_path
+            # Use the rt11extract_path that was already configured correctly
+            if not rt11extract_path or not rt11extract_path.exists():
+                raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
+            extractor = rt11extract_path
                 
             # Build command for executable
             cmd = [str(extractor), '-o', str(self.temp_dir), '-v', self.current_file]
@@ -524,35 +499,10 @@ class RT11ExtractGUI:
             self.progress_bar.config(mode='indeterminate')
             self.progress_bar.start()
             
-            # Use same extractor as scan thread - prioritize universal extractors
-            exe_dir = Path(sys.executable).parent
-            
-            if sys.platform.startswith('win'):
-                # En Windows usar rt11extract_universal.exe (mismo que scan)
-                extractor = exe_dir / "rt11extract_universal.exe"
-                if not extractor.exists():
-                    raise FileNotFoundError(f"RT11 Universal extractor not found at: {extractor}")
-            else:
-                # En macOS/Linux usar extractores universales primero (mismo que scan)
-                bundle_cli_dir = exe_dir.parent / "Frameworks" / "cli"
-                if getattr(sys, 'frozen', False) and bundle_cli_dir.exists():
-                    # Intentar usar rt11extract_universal primero (detecta ODS-1/RSX)
-                    extractor = bundle_cli_dir / "rt11extract_universal"
-                    if not extractor.exists():
-                        # Si no existe, usar universal_extractor compilado
-                        universal_exe = bundle_cli_dir / "universal_extractor"
-                        if universal_exe.exists():
-                            extractor = universal_exe
-                        else:
-                            # Último fallback a rt11extract_cli (solo RT-11)
-                            extractor = bundle_cli_dir / "rt11extract_cli"
-                            if not extractor.exists():
-                                raise FileNotFoundError(f"No extractor found in bundle at: {bundle_cli_dir}")
-                else:
-                    # En modo desarrollo usar rt11extract desde helper
-                    if not rt11extract_path or not rt11extract_path.exists():
-                        raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
-                    extractor = rt11extract_path
+            # Use the rt11extract_path that was already configured correctly
+            if not rt11extract_path or not rt11extract_path.exists():
+                raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
+            extractor = rt11extract_path
                 
             # Build command for executable
             cmd = [str(extractor), '-o', str(self.output_dir), '-v', self.current_file]
