@@ -26,7 +26,7 @@ sys.path.insert(0, str(filesystems_dir))
 sys.path.insert(0, str(backend_dir))  # Add backend to path
 
 # Import detection functions from each extractor
-from utils.bundle_paths import get_rt11extract_path
+from utils.bundle_paths import get_rt11extract_path, get_ods1_extractor_path
 
 def detect_rt11_filesystem(path):
     """Detect RT-11 filesystem using CLI extractor"""
@@ -183,6 +183,40 @@ def run_extractor(extractor_script: str, image_path: str, args: argparse.Namespa
             return 1
         except Exception as e:
             print(f"❌ Error running RT-11 extractor: {e}")
+            return 1
+    
+    # Special handling for ODS-1 - use compiled extractor
+    if 'ods1' in extractor_script:
+        # Use helper to find ODS-1 extractor path
+        ods1_extractor_path = get_ods1_extractor_path()
+        
+        if not ods1_extractor_path:
+            print("❌ ODS-1 extractor not found")
+            return 1
+        
+        # Convert path to absolute path to avoid working directory issues
+        abs_image_path = os.path.abspath(image_path)
+        cmd = [str(ods1_extractor_path), abs_image_path]
+        
+        # Add ODS-1 specific arguments
+        if args.list:
+            cmd.append('-l')
+        if args.detailed:
+            cmd.append('-d')
+        if args.output and args.output != 'extracted':
+            cmd.extend(['-o', args.output])
+        if args.verbose:
+            cmd.append('-v')
+        
+        try:
+            # Run the ODS-1 extractor
+            result = subprocess.run(cmd, capture_output=False, text=True)
+            return result.returncode
+        except FileNotFoundError:
+            print(f"❌ ODS-1 extractor not found")
+            return 1
+        except Exception as e:
+            print(f"❌ Error running ODS-1 extractor: {e}")
             return 1
     
     # Build command line for other extractors - use correct paths

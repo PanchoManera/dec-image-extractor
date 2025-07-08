@@ -82,3 +82,7 @@ def get_imd2raw_path() -> Path:
 def get_universal_extractor_path() -> Path:
     """Get path to universal extractor tool"""
     return get_bundled_executable_path('universal_extractor')
+
+def get_ods1_extractor_path() -> Path:
+    """Get path to ODS-1 extractor tool"""
+    return get_bundled_executable_path('ods1_extractor')
