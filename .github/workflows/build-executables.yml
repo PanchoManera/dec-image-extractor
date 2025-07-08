@@ -160,6 +160,14 @@ jobs:
           --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
           backend/extractors/universal_extractor.py || echo "universal_extractor build failed"
         
+        # Build ODS-1 extractor specifically for RSX-11M+ support
+        echo "Building ods1_extractor..."
+        pyinstaller --onefile --name "ods1_extractor" --paths="backend" --paths="." \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          backend/filesystems/ods1_extractor_v2.py || echo "ods1_extractor build failed"
+        
         # 2. Build IMD converter - simplified
         echo "Building IMD converter..."
         pyinstaller --onefile --name "imd2raw" --paths="." backend/image_converters/imd2raw.py || {
