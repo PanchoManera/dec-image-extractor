@@ -92,15 +92,35 @@ def detect_filesystem_type(image_path: str) -> str:
 def call_rt11_extractor(args):
     """Llama al extractor RT-11 original"""
     script_dir = get_script_dir()
-    # Buscar rt11extract_universal en el mismo directorio (backend/extractors)
-    rt11_universal = script_dir / "rt11extract_universal"
     
-    if not rt11_universal.exists():
-        print(f"Error: RT-11 extractor not found at {rt11_universal}")
-        return 1
-    
-    # Construir comando
-    cmd = [sys.executable, str(rt11_universal)] + sys.argv[1:]
+    if getattr(sys, 'frozen', False):
+        # En binario compilado, usar rt11extract_universal compilado
+        rt11_extractor = script_dir / "rt11extract_universal"
+        if not rt11_extractor.exists():
+            print(f"Error: RT-11 extractor not found at {rt11_extractor}")
+            return 1
+        
+        # Construir comando para binario compilado
+        cmd = [str(rt11_extractor), args.image]
+        
+        if args.list:
+            cmd.append('-l')
+        if args.detailed:
+            cmd.append('-d')
+        if args.output and args.output != 'extracted':
+            cmd.extend(['-o', args.output])
+        if args.verbose:
+            cmd.append('-v')
+            
+    else:
+        # En script, buscar rt11extract_universal script
+        rt11_universal = script_dir / "rt11extract_universal"
+        if not rt11_universal.exists():
+            print(f"Error: RT-11 extractor not found at {rt11_universal}")
+            return 1
+        
+        # Construir comando para script Python
+        cmd = [sys.executable, str(rt11_universal)] + sys.argv[1:]
     
     try:
         # Ejecutar con la misma salida que el original
@@ -113,29 +133,65 @@ def call_rt11_extractor(args):
 def call_unix_extractor(args):
     """Llama al extractor Unix PDP-11"""
     script_dir = get_script_dir()
-    # Buscar en backend/filesystems/
-    filesystems_dir = script_dir.parent / "filesystems"
-    unix_script = filesystems_dir / "unix_pdp11_extractor.py"
     
-    if not unix_script.exists():
-        print(f"Error: Unix extractor not found at {unix_script}")
-        return 1
-    
-    # Mapear parámetros de rt11extract a unix_pdp11_extractor
-    cmd = [sys.executable, str(unix_script), args.image]
-    
-    if args.list:
-        cmd.append("-l")
-        if args.detailed:
-            cmd.append("-d")
-        # Agregar flag recursivo si está presente
-        if hasattr(args, 'recursive') and args.recursive:
-            cmd.append("-r")
+    if getattr(sys, 'frozen', False):
+        # En binario compilado, usar importación directa como ODS-1
+        try:
+            from backend.filesystems.unix_pdp11_extractor import UnixV6FileSystem
+            
+            # Crear extractor
+            extractor = UnixV6FileSystem(args.image, args.verbose if hasattr(args, 'verbose') else False)
+            
+            if args.list:
+                # Modo lista
+                detailed = args.detailed if hasattr(args, 'detailed') else False
+                recursive = args.recursive if hasattr(args, 'recursive') else False
+                if recursive:
+                    extractor.list_files_recursive("/", detailed)
+                else:
+                    extractor.list_files("/", detailed)
+            else:
+                # Modo extracción
+                from pathlib import Path
+                output_path = Path(args.output)
+                output_path.mkdir(exist_ok=True)
+                
+                target_inode = extractor.find_path("/")
+                if target_inode and target_inode.is_dir():
+                    extracted = extractor.extract_directory(target_inode, output_path)
+                    print(f"Extracted {extracted} files successfully")
+                else:
+                    print("Error: Could not find root directory")
+                    return 1
+            
+            return 0
+        except Exception as e:
+            print(f"Error running Unix extractor: {e}")
+            return 1
+            
     else:
-        cmd.extend(["-o", args.output])
-    
-    if args.verbose:
-        cmd.append("-v")
+        # En script, buscar en backend/filesystems/
+        filesystems_dir = script_dir.parent / "filesystems"
+        unix_script = filesystems_dir / "unix_pdp11_extractor.py"
+        
+        if not unix_script.exists():
+            print(f"Error: Unix extractor not found at {unix_script}")
+            return 1
+        
+        # Mapear parámetros de rt11extract a unix_pdp11_extractor
+        cmd = [sys.executable, str(unix_script), args.image]
+        
+        if args.list:
+            cmd.append("-l")
+            if args.detailed:
+                cmd.append("-d")
+            if hasattr(args, 'recursive') and args.recursive:
+                cmd.append("-r")
+        else:
+            cmd.extend(["-o", args.output])
+        
+        if args.verbose:
+            cmd.append("-v")
     
     try:
         # Ejecutar con la misma salida que el original
