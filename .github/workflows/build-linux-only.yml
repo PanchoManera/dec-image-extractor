@@ -6,6 +6,7 @@ on:
 
 jobs:
   build-linux:
+    timeout-minutes: 30
     strategy:
       matrix:
         include:
@@ -28,9 +29,12 @@ jobs:
 
 
     - name: Install dependencies
+      timeout-minutes: 10
       run: |
+        echo "Installing Python dependencies..."
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        echo "Dependencies installed successfully"
     
     - name: Verify project structure (Linux)
       run: |
@@ -46,25 +50,35 @@ jobs:
         echo "Project structure verified"
 
     - name: Install Linux dependencies
+      timeout-minutes: 10
       run: |
+        echo "Updating package lists..."
         sudo apt-get update
+        echo "Installing Linux dependencies..."
         sudo apt-get install -y build-essential libgl1 libglib2.0-0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-xinerama0 libxcb-xfixes0
+        echo "Linux dependencies installed successfully"
 
     - name: Build Linux Executables
+      timeout-minutes: 15
       run: |
         ARCH_SUFFIX=""
         if [ "${{ matrix.arch }}" = "arm64" ]; then
           ARCH_SUFFIX="-arm64"
         fi
         
+        echo "Starting build for Linux ${{ matrix.arch }}..."
         mkdir -p cli
         
         # Using native ARM64 runner - no cross-compilation needed
         
         # Build CLI tools (similar to macOS approach)
+        echo "Building rt11extract..."
         pyinstaller --onefile --name rt11extract --paths backend --paths . backend/extractors/rt11extract
+        echo "Building rt11extract_universal..."
         pyinstaller --onefile --name rt11extract_universal --paths backend --paths . backend/extractors/rt11extract_universal
+        echo "Building universal_extractor..."
         pyinstaller --onefile --name universal_extractor --paths backend --paths . backend/extractors/universal_extractor.py
+        echo "Building imd2raw..."
         pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
         
         # Move CLIs to cli folder (like macOS)
@@ -77,20 +91,24 @@ jobs:
         chmod +x cli/*
         
         # Build GUI with CLI tools included (exactly like macOS)
+        echo "Building GUI executable..."
         pyinstaller --onefile --name RT11ExtractGUI --paths backend --paths . \
           --add-data "backend/extractors:backend/extractors" \
           --add-data "backend/filesystems:backend/filesystems" \
           --add-data "cli:cli" \
           gui/desktop/rt11extract_gui.py
         
+        echo "Creating package directory structure..."
         # Create directory structure like macOS but for Linux
         mkdir -p "RT11Extract-Linux${ARCH_SUFFIX}"
         
         # Copy the main GUI executable
+        echo "Copying GUI executable..."
         cp dist/RT11ExtractGUI "RT11Extract-Linux${ARCH_SUFFIX}/"
         chmod +x "RT11Extract-Linux${ARCH_SUFFIX}/RT11ExtractGUI"
         
         # Copy CLI tools to the same directory (like macOS approach)
+        echo "Copying CLI tools..."
         cp cli/* "RT11Extract-Linux${ARCH_SUFFIX}/"
         
         # Create README for Linux
@@ -119,7 +137,10 @@ jobs:
         EOF
         
         # Create tar.gz package
+        echo "Creating final package..."
         tar -czf "RT11Extract-Linux${ARCH_SUFFIX}.tar.gz" "RT11Extract-Linux${ARCH_SUFFIX}"
+        echo "Package created: RT11Extract-Linux${ARCH_SUFFIX}.tar.gz"
+        ls -la "RT11Extract-Linux${ARCH_SUFFIX}.tar.gz"
 
     - name: Upload Linux x64 Artifact
       if: matrix.arch == 'x64'
