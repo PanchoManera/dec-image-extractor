@@ -316,8 +316,11 @@ class RT11ExtractGUI:
                 cli_dir = exe_path.parent.parent / "Frameworks" / "cli"
                 if cli_dir.exists():
                     kwargs['cwd'] = str(cli_dir)
-            else:
+            elif sys.platform == 'win32':
                 # For Windows, use executable directory
+                kwargs['cwd'] = str(Path(sys.executable).parent)
+            else:
+                # For Linux, CLI tools are in same directory as GUI executable
                 kwargs['cwd'] = str(Path(sys.executable).parent)
         
         return kwargs
@@ -331,6 +334,32 @@ class RT11ExtractGUI:
                 "Please ensure rt11extract is in the correct location.")
         else:
             self.log("rt11extract found and ready")
+    
+    def check_winfsp_availability(self):
+        """Check if WinFsp is available on Windows"""
+        if sys.platform != "win32":
+            return True  # Not needed on non-Windows
+        
+        try:
+            # Try to find WinFsp installation
+            import winreg
+            try:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                                   r"SOFTWARE\WOW6432Node\WinFsp") as key:
+                    return True
+            except FileNotFoundError:
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 
+                                   r"SOFTWARE\WinFsp") as key:
+                    return True
+        except (ImportError, FileNotFoundError, OSError):
+            # Check for WinFsp files directly
+            winfsp_paths = [
+                "C:\\Program Files\\WinFsp\\bin\\winfsp-x64.dll",
+                "C:\\Program Files (x86)\\WinFsp\\bin\\winfsp-x86.dll"
+            ]
+            return any(os.path.exists(path) for path in winfsp_paths)
+        
+        return False
     
     def log(self, message):
         """Add message to log"""
@@ -386,16 +415,34 @@ class RT11ExtractGUI:
                 shutil.rmtree(self.temp_dir, ignore_errors=True)
             self.temp_dir = Path(tempfile.mkdtemp())
             
+            # Get subprocess kwargs early
+            kwargs = self._get_subprocess_kwargs()
+            
+            # Convert IMD to RAW if necessary on Linux
+            if sys.platform.startswith('linux'):
+                if self.current_file.lower().endswith('.imd'):
+                    if not imd2raw_path or not imd2raw_path.exists():
+                        raise FileNotFoundError(f"IMD2RAW tool not found at: {imd2raw_path}")
+                    raw_output = self.temp_dir / (Path(self.current_file).stem + '.raw')
+                    convert_cmd = [str(imd2raw_path), self.current_file, str(raw_output)]
+                    convert_result = subprocess.run(convert_cmd, **kwargs)
+                    if convert_result.returncode != 0:
+                        raise Exception(f"Conversion failed for IMD file: {self.current_file}")
+                    working_file = str(raw_output)
+                else:
+                    working_file = self.current_file
+            else:
+                working_file = self.current_file
+
             # Use the rt11extract_path that was already configured correctly
             if not rt11extract_path or not rt11extract_path.exists():
                 raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
             extractor = rt11extract_path
                 
             # Build command for executable
-            cmd = [str(extractor), '-o', str(self.temp_dir), '-v', self.current_file]
+            cmd = [str(extractor), '-o', str(self.temp_dir), '-v', working_file]
             
             # Run command
-            kwargs = self._get_subprocess_kwargs()
             result = subprocess.run(cmd, **kwargs)
             
             # Log output for debugging
@@ -542,10 +589,28 @@ class RT11ExtractGUI:
                 raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
             extractor = rt11extract_path
                 
-            # Build command for executable
-            cmd = [str(extractor), '-o', str(self.output_dir), '-v', self.current_file]
-            
+            # Get subprocess kwargs early
             kwargs = self._get_subprocess_kwargs()
+
+            # Convert IMD to RAW if necessary on Linux
+            if sys.platform.startswith('linux'):
+                if self.current_file.lower().endswith('.imd'):
+                    if not imd2raw_path or not imd2raw_path.exists():
+                        raise FileNotFoundError(f"IMD2RAW tool not found at: {imd2raw_path}")
+                    raw_output = self.output_dir / (Path(self.current_file).stem + '.raw')
+                    convert_cmd = [str(imd2raw_path), self.current_file, str(raw_output)]
+                    convert_result = subprocess.run(convert_cmd, **kwargs)
+                    if convert_result.returncode != 0:
+                        raise Exception(f"Conversion failed for IMD file: {self.current_file}")
+                    working_file = str(raw_output)
+                else:
+                    working_file = self.current_file
+            else:
+                working_file = self.current_file
+
+            # Build command for executable
+            cmd = [str(extractor), '-o', str(self.output_dir), '-v', working_file]
+            
             result = subprocess.run(cmd, **kwargs)
             
             if result.returncode == 0:
