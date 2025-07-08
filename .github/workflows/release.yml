@@ -1,0 +1,143 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0, v2.3.0, etc.
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Extract version from tag
+      id: version
+      run: |
+        echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        echo "Version: ${GITHUB_REF#refs/tags/}"
+    
+    - name: Wait for build artifacts
+      run: |
+        echo "Waiting for build workflow to complete..."
+        sleep 30
+        
+    - name: Download Windows artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: RT11Extract-Windows
+        path: ./artifacts/
+      continue-on-error: true
+        
+    - name: Download macOS artifacts  
+      uses: actions/download-artifact@v4
+      with:
+        name: RT11Extract-macOS
+        path: ./artifacts/
+      continue-on-error: true
+        
+    - name: Download macOS Debug artifacts (enhanced bundle)
+      uses: actions/download-artifact@v4
+      with:
+        name: RT11Extractor-macOS-Debug
+        path: ./artifacts/
+      continue-on-error: true
+    
+    - name: List available artifacts
+      run: |
+        echo "Available artifacts:"
+        ls -la ./artifacts/ || echo "No artifacts directory found"
+        find . -name "*.zip" -o -name "*.dmg" -o -name "*.app" | head -10
+    
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ steps.version.outputs.VERSION }}
+        release_name: RT-11 Extractor ${{ steps.version.outputs.VERSION }}
+        body: |
+          ## RT-11 Extractor ${{ steps.version.outputs.VERSION }}
+          
+          Universal PDP-11 filesystem extractor with support for:
+          - ✅ **RT-11** filesystems
+          - ✅ **Unix PDP-11** (v5/v6/v7) filesystems  
+          - ✅ **RSX-11M+** (ODS-1) filesystems
+          
+          ### Downloads
+          - **Windows**: `RT11Extract-Windows.zip` - Complete Windows bundle with GUI and CLI tools
+          - **macOS**: `RT11Extract-macOS.dmg` - Standard macOS bundle
+          - **macOS Enhanced**: `RT11Extractor-macOS-Debug.zip` - Enhanced bundle with all extractors
+          
+          ### Features
+          - Universal GUI with automatic filesystem detection
+          - CLI tools for batch processing
+          - Support for `.dsk`, `.img`, `.imd` disk images
+          - ImageDisk (IMD) to raw conversion
+          - Cross-platform compatibility
+          
+          ### Usage
+          - **GUI**: Launch RT11ExtractGUI for point-and-click operation
+          - **CLI**: Use RT11Extract for command-line batch processing
+          - **Universal**: Automatic filesystem detection and appropriate extractor selection
+          
+          All executables are standalone and don't require Python installation.
+        draft: false
+        prerelease: false
+    
+    - name: Upload Windows Release Asset
+      if: hashFiles('./artifacts/RT11Extract-Windows.zip') != ''
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/RT11Extract-Windows.zip
+        asset_name: RT11Extract-Windows.zip
+        asset_content_type: application/zip
+        
+    - name: Upload macOS Release Asset
+      if: hashFiles('./artifacts/RT11Extract-macOS.dmg') != ''
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/RT11Extract-macOS.dmg
+        asset_name: RT11Extract-macOS.dmg
+        asset_content_type: application/octet-stream
+        
+    - name: Upload macOS Enhanced Release Asset
+      if: hashFiles('./artifacts/RT11Extractor-macOS-Debug.zip') != ''
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./artifacts/RT11Extractor-macOS-Debug.zip
+        asset_name: RT11Extractor-macOS-Enhanced.zip
+        asset_content_type: application/zip
+
+  trigger-builds:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Trigger Windows/macOS build
+      uses: actions/github-script@v6
+      with:
+        script: |
+          await github.rest.actions.createWorkflowDispatch({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            workflow_id: 'build.yml',
+            ref: '${{ github.ref }}'
+          });
+          
+          await github.rest.actions.createWorkflowDispatch({
+            owner: context.repo.owner,
+            repo: context.repo.repo,  
+            workflow_id: 'build-macos-only.yml',
+            ref: '${{ github.ref }}'
+          });
