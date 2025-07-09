@@ -1433,7 +1433,7 @@ def apply_rt11_file_date(output_dir, file_info, verbose=False):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Universal PDP-11 Disk Image Extractor v3.0 - RT-11 & Unix Support",
+        description="Universal PDP-11 Disk Image Extractor v3.0 - RT-11, Unix & ODS-1 Support",
         epilog="""Examples:
   %(prog)s disk.dsk                    # Auto-detect and extract
   %(prog)s disk.dsk -l                 # List files only
@@ -1442,6 +1442,7 @@ def main():
   %(prog)s disk.dsk --detect-only      # Only detect filesystem type
   %(prog)s disk.dsk --force-rt11       # Force RT-11 mode
   %(prog)s disk.dsk --force-unix       # Force Unix mode
+  %(prog)s disk.dsk --force-ods1       # Force ODS-1/Files-11 mode (RSX-11)
         """,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
@@ -1465,6 +1466,8 @@ def main():
                        help="Force RT-11 filesystem processing")
     parser.add_argument("--force-unix", action="store_true",
                        help="Force Unix filesystem processing")
+    parser.add_argument("--force-ods1", action="store_true",
+                       help="Force ODS-1/Files-11 filesystem processing (RSX-11, early VMS)")
     parser.add_argument("--no-strict", action="store_true",
                        help="Continue extraction despite errors (RT-11 only)")
     parser.add_argument("--validate", action="store_true",
@@ -1482,6 +1485,9 @@ def main():
         elif args.force_unix:
             fs_type = "unix"
             description = "Unix (forced)"
+        elif args.force_ods1:
+            fs_type = "ods1"
+            description = "ODS-1/Files-11 (forced)"
         else:
             # Auto-detect filesystem type
             fs_type, description = detect_filesystem_type(args.image)
@@ -1533,6 +1539,134 @@ def main():
                         return 1
             
             return 0
+        
+        # Handle ODS-1/Files-11 filesystems (RSX-11, early VMS)
+        elif fs_type == "ods1":
+            print(f"Universal PDP-11 Extractor v3.0 - ODS-1/Files-11 Mode")
+            print(f"Processing: {args.image}")
+            print(f"Detected: {description}")
+            print("-" * 50)
+            
+            # For ODS-1, we need to use the ods1_extractor_v2 directly
+            # Import the extractor
+            import sys
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'filesystems'))
+            
+            try:
+                from ods1_extractor_v2 import ODS1Extractor
+                
+                # Create extractor
+                extractor = ODS1Extractor(args.image)
+                
+                # Parse home block
+                if not extractor.parse_home_block():
+                    print(f"[ERROR] Failed to parse ODS-1 home block")
+                    return 1
+                
+                # Scan for file headers
+                file_headers = extractor.scan_for_file_headers()
+                
+                if not file_headers:
+                    print(f"[ERROR] No files found in ODS-1 filesystem")
+                    return 1
+                
+                if args.list:
+                    # List ODS-1 files
+                    print(f"\nODS-1/Files-11 Directory Listing: {args.image}")
+                    print(f"Volume: {extractor.volume_name}")
+                    print("=" * 80)
+                    print(f"{'Filename':<20} {'Type':<8} {'Size (KB)':<10} {'Version':<8} {'Date':<12}")
+                    print("-" * 80)
+                    
+                    for header in file_headers:
+                        if header.filename and header.filename.strip():
+                            size_kb = (header.highest_vbn * 512) // 1024 if header.highest_vbn else 0
+                            full_name = f"{header.filename}.{header.filetype}" if header.filetype else header.filename
+                            version = f";{header.version}" if header.version > 0 else ""
+                            date_str = header.creation_date or "N/A"
+                            print(f"{full_name:<20} {header.filetype:<8} {size_kb:<10} {version:<8} {date_str:<12}")
+                    
+                    print(f"\nTotal files: {len(file_headers)}")
+                    return 0
+                
+                # Extract ODS-1 files
+                output_path = Path(args.output)
+                output_path.mkdir(exist_ok=True)
+                
+                print(f"\nExtracting ODS-1 files to: {output_path}")
+                print("=" * 60)
+                
+                extracted_count = 0
+                failed_count = 0
+                
+                for header in file_headers:
+                    if header.filename and header.filename.strip():
+                        try:
+                            # Check if this is a directory
+                            if header.filetype.upper() == 'DIR':
+                                # Create directory
+                                dir_name = header.filename
+                                dir_path = output_path / f"{dir_name}/"
+                                dir_path.mkdir(exist_ok=True)
+                                
+                                if args.verbose:
+                                    print(f"Created directory: {dir_name}/")
+                                
+                                extracted_count += 1
+                            else:
+                                # Extract file using ODS-1 extractor
+                                file_data = extractor.extract_file_data(header)
+                                
+                                # Create file even if empty (some system files are legitimately empty)
+                                full_name = f"{header.filename}.{header.filetype}" if header.filetype else header.filename
+                                if header.version > 0:
+                                    full_name += f";{header.version}"
+                                
+                                output_file = output_path / full_name
+                                
+                                # Handle name conflicts
+                                counter = 1
+                                base_path = output_file
+                                while output_file.exists():
+                                    stem = base_path.stem
+                                    suffix = base_path.suffix
+                                    output_file = base_path.parent / f"{stem}_{counter}{suffix}"
+                                    counter += 1
+                                
+                                # Write file (even if empty)
+                                with open(output_file, 'wb') as f:
+                                    if file_data:
+                                        f.write(file_data)
+                                    # If file_data is None or empty, create empty file
+                                
+                                if args.verbose:
+                                    size = len(file_data) if file_data else 0
+                                    print(f"Extracted: {full_name} ({size} bytes)")
+                                
+                                extracted_count += 1
+                        except Exception as e:
+                            if args.verbose:
+                                print(f"Error extracting {header.filename}: {e}")
+                            failed_count += 1
+                
+                # Summary
+                print(f"\n[OK] ODS-1 extraction complete!")
+                print(f"[+] Successfully extracted: {extracted_count} files")
+                if failed_count > 0:
+                    print(f"[-] Failed to extract: {failed_count} files")
+                print(f"[OUT] Output directory: {output_path.absolute()}")
+                
+                return 0 if failed_count == 0 else 1
+                
+            except ImportError as e:
+                print(f"[ERROR] ODS-1 extractor not available: {e}")
+                return 1
+            except Exception as e:
+                print(f"[ERROR] ODS-1 extraction failed: {e}")
+                if args.verbose:
+                    import traceback
+                    traceback.print_exc()
+                return 1
         
         # Handle RT-11 filesystems
         elif fs_type == "rt11":
@@ -2217,9 +2351,69 @@ def detect_rt11_filesystem(image_path: str) -> Tuple[bool, str]:
     except:
         return False, "Not a valid RT-11 filesystem"
 
+def detect_ods1_filesystem(image_path: str) -> Tuple[bool, str]:
+    """Detect if this is a valid ODS-1/Files-11 filesystem (RSX-11M, RSX-11M+, etc.)"""
+    try:
+        # Try to detect ODS-1 home block at LBN 1 (offset 512)
+        with open(image_path, 'rb') as f:
+            f.seek(512)  # LBN 1
+            home_block = f.read(512)
+            
+            if len(home_block) < 512:
+                return False, "File too small for ODS-1 home block"
+            
+            # Parse key ODS-1 home block fields
+            index_file_bitmap_size = struct.unpack('<H', home_block[0:2])[0]
+            bitmap_lbn_high = struct.unpack('<H', home_block[2:4])[0]
+            bitmap_lbn_low = struct.unpack('<H', home_block[4:6])[0]
+            bitmap_lbn = (bitmap_lbn_high << 16) | bitmap_lbn_low
+            max_files = struct.unpack('<H', home_block[6:8])[0]
+            storage_bitmap_cluster_factor = struct.unpack('<H', home_block[8:10])[0]
+            device_type = struct.unpack('<H', home_block[10:12])[0]
+            structure_level = struct.unpack('<H', home_block[12:14])[0]
+            
+            # Volume name (12 bytes, null-padded)
+            vol_name_bytes = home_block[14:26]
+            volume_name = vol_name_bytes.rstrip(b'\x00').decode('ascii', errors='ignore')
+            
+            # Basic validation for ODS-1 home block
+            if (index_file_bitmap_size > 0 and 
+                bitmap_lbn > 0 and 
+                max_files > 0 and max_files < 100000 and
+                structure_level == 0x0101):  # ODS-1 structure level
+                
+                # Get file size for additional validation
+                f.seek(0, 2)
+                file_size = f.tell()
+                total_blocks = file_size // 512
+                
+                # Validate bitmap LBN is within disk bounds
+                if bitmap_lbn > total_blocks:
+                    return False, f"Invalid bitmap LBN {bitmap_lbn} (disk has {total_blocks} blocks)"
+                
+                # Determine filesystem type based on volume name and characteristics
+                vol_name = volume_name.strip()
+                if vol_name:
+                    if "RSX" in vol_name.upper():
+                        return True, f"ODS-1/Files-11 filesystem - RSX-11M+ (Volume: {vol_name})"
+                    else:
+                        return True, f"ODS-1/Files-11 filesystem (Volume: {vol_name})"
+                else:
+                    return True, "ODS-1/Files-11 filesystem (RSX-11M/RSX-11M+ or early VMS)"
+            
+            return False, f"Invalid ODS-1 structure (level=0x{structure_level:04x}, expected 0x0101)"
+            
+    except Exception as e:
+        return False, f"ODS-1 detection failed: {e}"
+
 def detect_filesystem_type(image_path: str) -> Tuple[str, str]:
-    """Detect filesystem type (RT-11 or Unix)"""
-    # Try Unix first
+    """Detect filesystem type (RT-11, Unix, or ODS-1/Files-11)"""
+    # Try ODS-1/Files-11 detection first (most specific)
+    is_ods1, ods1_desc = detect_ods1_filesystem(image_path)
+    if is_ods1:
+        return "ods1", ods1_desc
+    
+    # Try Unix
     is_unix, unix_desc = detect_unix_filesystem(image_path)
     if is_unix:
         return "unix", unix_desc
@@ -2229,7 +2423,7 @@ def detect_filesystem_type(image_path: str) -> Tuple[str, str]:
     if is_rt11:
         return "rt11", rt11_desc
     
-    return "unknown", "Unknown filesystem type"
+    return "unknown", "Unknown or unsupported PDP-11 filesystem"
 
 if __name__ == '__main__':
     sys.exit(main())
