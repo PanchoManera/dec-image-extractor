@@ -15,7 +15,7 @@ jobs:
             runner: ubuntu-latest
           - os: ubuntu-latest
             arch: arm64
-            runner: ubuntu-latest
+            runner: ubuntu-latest-arm64
 
     runs-on: ${{ matrix.runner }}
 
@@ -191,79 +191,67 @@ jobs:
       if: matrix.arch == 'arm64'
       timeout-minutes: 20
       run: |
-        echo "Starting build for Linux ARM64 using Docker..."
+        echo "Starting build for Linux ARM64 native..."
+        mkdir -p cli
         
-        # Create a Dockerfile for ARM64 build
-        cat > Dockerfile.arm64 << 'EOF'
-        FROM --platform=linux/arm64 python:3.11-slim
+        # Build CLI tools (same as x64 but on ARM64 runner)
+        echo "Building rt11extract..."
+        pyinstaller --onefile --name rt11extract --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          --hidden-import="backend.extractors.rt11extract_smart" \
+          --hidden-import="backend.extractors.rt11extract_universal" \
+          --hidden-import="backend.filesystems.ods1_extractor_v2" \
+          --hidden-import="backend.filesystems.unix_pdp11_extractor" \
+          backend/extractors/rt11extract
+        echo "Building rt11extract_universal..."
+        pyinstaller --onefile --name rt11extract_universal --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          --hidden-import="backend.filesystems.ods1_extractor_v2" \
+          --hidden-import="backend.filesystems.unix_pdp11_extractor" \
+          backend/extractors/rt11extract_universal
+        echo "Building universal_extractor..."
+        pyinstaller --onefile --name universal_extractor --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          backend/extractors/universal_extractor.py
+        echo "Building ods1_extractor (RSX-11M+ support)..."
+        pyinstaller --onefile --name ods1_extractor --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          backend/filesystems/ods1_extractor_v2.py
+        echo "Building imd2raw..."
+        pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py
         
-        # Install system dependencies
-        RUN apt-get update && apt-get install -y \
-            build-essential \
-            libgl1 \
-            libglib2.0-0 \
-            libxkbcommon-x11-0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-randr0 \
-            libxcb-render-util0 \
-            libxcb-xinerama0 \
-            libxcb-xfixes0 \
-            python3-tk \
-            && rm -rf /var/lib/apt/lists/*
+        # Move CLIs to cli folder
+        cp dist/rt11extract cli/
+        cp dist/rt11extract_universal cli/
+        cp dist/universal_extractor cli/
+        cp dist/ods1_extractor cli/
+        cp dist/imd2raw cli/
         
-        # Set working directory
-        WORKDIR /app
+        # Make CLIs executable
+        chmod +x cli/*
         
-        # Copy requirements and install Python dependencies
-        COPY requirements.txt .
-        RUN pip install --no-cache-dir -r requirements.txt
-        
-        # Copy source code
-        COPY . .
-        
-        # Create build script
-        RUN echo '#!/bin/bash' > build.sh && \
-            echo 'mkdir -p cli' >> build.sh && \
-            echo 'echo "Building rt11extract..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name rt11extract --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" --hidden-import="backend.extractors.rt11extract_smart" --hidden-import="backend.extractors.rt11extract_universal" --hidden-import="backend.filesystems.ods1_extractor_v2" --hidden-import="backend.filesystems.unix_pdp11_extractor" backend/extractors/rt11extract' >> build.sh && \
-            echo 'echo "Building rt11extract_universal..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name rt11extract_universal --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" --hidden-import="backend.filesystems.ods1_extractor_v2" --hidden-import="backend.filesystems.unix_pdp11_extractor" backend/extractors/rt11extract_universal' \
-            echo 'echo "Building universal_extractor..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name universal_extractor --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" backend/extractors/universal_extractor.py' >> build.sh && \
-            echo 'echo "Building ods1_extractor (RSX-11M+ support)..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name ods1_extractor --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" backend/filesystems/ods1_extractor_v2.py' >> build.sh && \
-            echo 'echo "Building imd2raw..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name imd2raw --paths backend --paths . backend/image_converters/imd2raw.py' >> build.sh && \
-            echo 'cp dist/rt11extract cli/' >> build.sh && \
-            echo 'cp dist/rt11extract_universal cli/' >> build.sh && \
-            echo 'cp dist/universal_extractor cli/' >> build.sh && \
-            echo 'cp dist/ods1_extractor cli/' >> build.sh && \
-            echo 'cp dist/imd2raw cli/' >> build.sh && \
-            echo 'chmod +x cli/*' >> build.sh && \
-            echo 'echo "Building GUI executable..."' >> build.sh && \
-            echo 'pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --add-data "cli:cli" --hidden-import tkinter --hidden-import backend.extractors --hidden-import backend.filesystems --hidden-import backend.extractors.rt11extract_smart --hidden-import backend.extractors.rt11extract_universal --hidden-import backend.filesystems.ods1_extractor_v2 --hidden-import backend.filesystems.unix_pdp11_extractor gui/desktop/rt11extract_gui.py' >> build.sh && \
-            chmod +x build.sh
-        
-        # Run the build
-        CMD ["./build.sh"]
-        EOF
-        
-        # Build the Docker image and run the build
-        docker build --platform linux/arm64 -f Dockerfile.arm64 -t rt11extract-arm64-builder .
-        
-        # Create output directories
-        mkdir -p dist cli
-        
-        # Run the build with proper volume mounts
-        docker run --platform linux/arm64 --rm \
-          -v "$(pwd)/dist:/app/dist" \
-          -v "$(pwd)/cli:/app/cli" \
-          rt11extract-arm64-builder \
-          /bin/bash -c "./build.sh && ls -la dist/ && ls -la cli/"
-        
-        echo "ARM64 build completed using Docker"
+        # Build GUI with CLI tools included
+        echo "Building GUI executable..."
+        pyinstaller --onefile --windowed --name RT11ExtractGUI --paths backend --paths . \
+          --add-data "backend/extractors:backend/extractors" \
+          --add-data "backend/filesystems:backend/filesystems" \
+          --add-data "cli:cli" \
+          --hidden-import tkinter \
+          --hidden-import backend.extractors \
+          --hidden-import backend.filesystems \
+          --hidden-import backend.extractors.rt11extract_smart \
+          --hidden-import backend.extractors.rt11extract_universal \
+          --hidden-import backend.filesystems.ods1_extractor_v2 \
+          --hidden-import backend.filesystems.unix_pdp11_extractor \
+          gui/desktop/rt11extract_gui.py
         
         # Verify that binaries are Linux ELF files
         echo "Verifying binary formats..."
@@ -281,6 +269,8 @@ jobs:
           fi
         done
         echo "All binaries verified as Linux ELF files"
+        
+        echo "ARM64 build completed natively"
         
         echo "Creating package directory structure..."
         # Define architecture suffix for ARM64
