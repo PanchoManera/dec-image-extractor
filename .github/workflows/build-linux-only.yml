@@ -96,6 +96,8 @@ jobs:
           --add-data "backend/extractors:backend/extractors" \
           --add-data "backend/filesystems:backend/filesystems" \
           --hidden-import="backend.extractors" --hidden-import="backend.filesystems" \
+          --hidden-import="backend.filesystems.ods1_extractor_v2" \
+          --hidden-import="backend.filesystems.unix_pdp11_extractor" \
           backend/extractors/rt11extract_universal
         echo "Building universal_extractor..."
         pyinstaller --onefile --name universal_extractor --paths backend --paths . \
@@ -227,7 +229,7 @@ jobs:
             echo 'echo "Building rt11extract..."' >> build.sh && \
             echo 'pyinstaller --onefile --name rt11extract --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" --hidden-import="backend.extractors.rt11extract_smart" --hidden-import="backend.extractors.rt11extract_universal" --hidden-import="backend.filesystems.ods1_extractor_v2" --hidden-import="backend.filesystems.unix_pdp11_extractor" backend/extractors/rt11extract' >> build.sh && \
             echo 'echo "Building rt11extract_universal..."' >> build.sh && \
-            echo 'pyinstaller --onefile --name rt11extract_universal --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" backend/extractors/rt11extract_universal' >> build.sh && \
+            echo 'pyinstaller --onefile --name rt11extract_universal --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" --hidden-import="backend.filesystems.ods1_extractor_v2" --hidden-import="backend.filesystems.unix_pdp11_extractor" backend/extractors/rt11extract_universal' \
             echo 'echo "Building universal_extractor..."' >> build.sh && \
             echo 'pyinstaller --onefile --name universal_extractor --paths backend --paths . --add-data "backend/extractors:backend/extractors" --add-data "backend/filesystems:backend/filesystems" --hidden-import="backend.extractors" --hidden-import="backend.filesystems" backend/extractors/universal_extractor.py' >> build.sh && \
             echo 'echo "Building ods1_extractor (RSX-11M+ support)..."' >> build.sh && \
