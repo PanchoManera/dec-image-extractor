@@ -252,9 +252,35 @@ jobs:
         
         # Build the Docker image and run the build
         docker build --platform linux/arm64 -f Dockerfile.arm64 -t rt11extract-arm64-builder .
-        docker run --platform linux/arm64 --rm -v $(pwd)/dist:/app/dist -v $(pwd)/cli:/app/cli rt11extract-arm64-builder
+        
+        # Create output directories
+        mkdir -p dist cli
+        
+        # Run the build with proper volume mounts
+        docker run --platform linux/arm64 --rm \
+          -v "$(pwd)/dist:/app/dist" \
+          -v "$(pwd)/cli:/app/cli" \
+          rt11extract-arm64-builder \
+          /bin/bash -c "./build.sh && ls -la dist/ && ls -la cli/"
         
         echo "ARM64 build completed using Docker"
+        
+        # Verify that binaries are Linux ELF files
+        echo "Verifying binary formats..."
+        for binary in dist/RT11ExtractGUI dist/rt11extract_universal; do
+          if [ -f "$binary" ]; then
+            file_type=$(file "$binary")
+            echo "$binary: $file_type"
+            if [[ "$file_type" != *"ELF"* ]]; then
+              echo "ERROR: $binary is not a Linux ELF file!"
+              exit 1
+            fi
+          else
+            echo "ERROR: $binary was not created!"
+            exit 1
+          fi
+        done
+        echo "All binaries verified as Linux ELF files"
         
         echo "Creating package directory structure..."
         # Define architecture suffix for ARM64
