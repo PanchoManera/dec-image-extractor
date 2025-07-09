@@ -434,34 +434,14 @@ class RT11ExtractGUI:
             else:
                 working_file = self.current_file
 
-            # Use universal extractor for automatic filesystem detection
-            # First try to find universal_extractor, fallback to rt11extract
-            universal_extractor_path = None
+            # Use rt11extract_universal for automatic filesystem detection
+            if not rt11extract_path or not rt11extract_path.exists():
+                raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
             
-            # Look for universal_extractor in same directory as rt11extract
-            if rt11extract_path and rt11extract_path.exists():
-                extractor_dir = rt11extract_path.parent
-                universal_candidates = [
-                    extractor_dir / "universal_extractor",
-                    extractor_dir / "universal_extractor.exe"
-                ]
-                for candidate in universal_candidates:
-                    if candidate.exists():
-                        universal_extractor_path = candidate
-                        break
-            
-            if universal_extractor_path:
-                # Use universal extractor for automatic detection
-                extractor = universal_extractor_path
-                cmd = [str(extractor), working_file, '-o', str(self.temp_dir), '-v']
-                self.log(f"Using universal extractor for automatic filesystem detection")
-            else:
-                # Fallback to RT-11 extractor
-                if not rt11extract_path or not rt11extract_path.exists():
-                    raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
-                extractor = rt11extract_path
-                cmd = [str(extractor), '-o', str(self.temp_dir), '-v', working_file]
-                self.log(f"Using RT-11 extractor (universal extractor not found)")
+            # rt11extract_universal now supports RT-11, Unix, and ODS-1/RSX-11
+            extractor = rt11extract_path
+            cmd = [str(extractor), working_file, '-o', str(self.temp_dir), '-v']
+            self.log(f"Using universal extractor for automatic filesystem detection")
             
             # Run command
             result = subprocess.run(cmd, **kwargs)
@@ -624,34 +604,14 @@ class RT11ExtractGUI:
             else:
                 working_file = self.current_file
 
-            # Use universal extractor for automatic filesystem detection
-            # First try to find universal_extractor, fallback to rt11extract
-            universal_extractor_path = None
+            # Use rt11extract_universal for automatic filesystem detection
+            if not rt11extract_path or not rt11extract_path.exists():
+                raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
             
-            # Look for universal_extractor in same directory as rt11extract
-            if rt11extract_path and rt11extract_path.exists():
-                extractor_dir = rt11extract_path.parent
-                universal_candidates = [
-                    extractor_dir / "universal_extractor",
-                    extractor_dir / "universal_extractor.exe"
-                ]
-                for candidate in universal_candidates:
-                    if candidate.exists():
-                        universal_extractor_path = candidate
-                        break
-            
-            if universal_extractor_path:
-                # Use universal extractor for automatic detection
-                extractor = universal_extractor_path
-                cmd = [str(extractor), working_file, '-o', str(self.output_dir), '-v']
-                self.log(f"Using universal extractor for automatic filesystem detection")
-            else:
-                # Fallback to RT-11 extractor
-                if not rt11extract_path or not rt11extract_path.exists():
-                    raise FileNotFoundError(f"RT11 extractor not found at: {rt11extract_path}")
-                extractor = rt11extract_path
-                cmd = [str(extractor), '-o', str(self.output_dir), '-v', working_file]
-                self.log(f"Using RT-11 extractor (universal extractor not found)")
+            # rt11extract_universal now supports RT-11, Unix, and ODS-1/RSX-11
+            extractor = rt11extract_path
+            cmd = [str(extractor), working_file, '-o', str(self.output_dir), '-v']
+            self.log(f"Using universal extractor for automatic filesystem detection")
             
             result = subprocess.run(cmd, **kwargs)
             
