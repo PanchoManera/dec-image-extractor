@@ -442,9 +442,15 @@ class RT11ExtractGUI:
             extractor = rt11extract_path
             cmd = [str(extractor), working_file, '-o', str(self.temp_dir), '-v']
             self.log(f"Using universal extractor for automatic filesystem detection")
+            self.log(f"Command: {' '.join(cmd)}")
             
-            # Run command
-            result = subprocess.run(cmd, **kwargs)
+            # Run command with timeout
+            try:
+                result = subprocess.run(cmd, timeout=60, **kwargs)
+                self.log(f"Command completed with exit code: {result.returncode}")
+            except subprocess.TimeoutExpired:
+                self.log("Command timed out after 60 seconds")
+                raise Exception("Extraction command timed out")
             
             # Log output for debugging
             if result.stdout:
@@ -612,8 +618,15 @@ class RT11ExtractGUI:
             extractor = rt11extract_path
             cmd = [str(extractor), working_file, '-o', str(self.output_dir), '-v']
             self.log(f"Using universal extractor for automatic filesystem detection")
+            self.log(f"Command: {' '.join(cmd)}")
             
-            result = subprocess.run(cmd, **kwargs)
+            # Run command with timeout
+            try:
+                result = subprocess.run(cmd, timeout=60, **kwargs)
+                self.log(f"Command completed with exit code: {result.returncode}")
+            except subprocess.TimeoutExpired:
+                self.log("Command timed out after 60 seconds")
+                raise Exception("Extraction command timed out")
             
             if result.returncode == 0:
                 self.root.after(0, lambda: messagebox.showinfo("Success", 
