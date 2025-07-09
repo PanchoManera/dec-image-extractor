@@ -189,91 +189,43 @@ jobs:
 
     - name: Build Linux Executables (ARM64)
       if: matrix.arch == 'arm64'
-      timeout-minutes: 20
+      timeout-minutes: 10
       run: |
-        echo "Starting build for Linux ARM64 using cross-compilation..."
+        echo "Creating ARM64 compatibility package..."
         
-        # Install cross-compilation tools
-        sudo apt-get update
-        sudo apt-get install -y gcc-aarch64-linux-gnu
-        
-        # Skip ARM64 build for now - focus on x64 working version
-        echo "ARM64 build temporarily disabled - use x64 version with emulation"
-        echo "Creating empty ARM64 package structure..."
+        # Simply create a placeholder package with instructions
+        # to avoid GitHub Actions timeout issues with cross-compilation
         mkdir -p "RT11Extract-Linux-arm64"
-        
-        # Copy x64 binaries as fallback
-        if [ -f "dist/RT11ExtractGUI" ]; then
-          cp dist/RT11ExtractGUI "RT11Extract-Linux-arm64/"
-          chmod +x "RT11Extract-Linux-arm64/RT11ExtractGUI"
-        fi
         
         # Create README explaining the situation
         cat > "RT11Extract-Linux-arm64/README.txt" << 'EOF'
         RT11 Extract Linux ARM64 Distribution
         
-        NOTICE: This package contains x64 binaries for compatibility.
-        ARM64 native builds are still in development.
+        NOTICE: Native ARM64 builds are currently experiencing issues with GitHub Actions.
         
-        For now, please use the x64 version (RT11Extract-Linux.tar.gz) which
-        works on most ARM64 systems through emulation.
+        RECOMMENDED SOLUTION:
+        Please use the x64 version (RT11Extract-Linux.tar.gz) which works
+        on most ARM64 Linux systems through automatic emulation.
         
-        If you need native ARM64 binaries, please open an issue on GitHub.
+        Most modern ARM64 Linux distributions can run x64 binaries transparently.
+        
+        If you absolutely need native ARM64 binaries:
+        1. Clone the repository
+        2. Install Python 3.11 and pip
+        3. Run: pip install -r requirements.txt
+        4. Run: python gui/desktop/rt11extract_gui.py
+        
+        For issues or questions, please open an issue on GitHub.
         EOF
         
-        # Create placeholder package
+        # Create simple package
         tar -czf "RT11Extract-Linux-arm64.tar.gz" "RT11Extract-Linux-arm64"
-        echo "Placeholder ARM64 package created"
+        echo "ARM64 compatibility package created"
         
-        echo "Creating package directory structure..."
-        # Define architecture suffix for ARM64
-        ARCH_SUFFIX="-arm64"
-        # Create directory structure like macOS but for Linux
-        mkdir -p "RT11Extract-Linux${ARCH_SUFFIX}"
-        
-        # Copy the main GUI executable
-        echo "Copying GUI executable..."
-        cp dist/RT11ExtractGUI "RT11Extract-Linux${ARCH_SUFFIX}/"
-        chmod +x "RT11Extract-Linux${ARCH_SUFFIX}/RT11ExtractGUI"
-        
-        # Copy CLI tools to the same directory (like macOS approach)
-        echo "Copying CLI tools..."
-        cp cli/* "RT11Extract-Linux${ARCH_SUFFIX}/"
-        
-        # Create README for Linux
-        cat > "RT11Extract-Linux${ARCH_SUFFIX}/README.txt" << 'EOF'
-        RT11 Extract Linux${{ matrix.arch == 'arm64' && ' ARM64' || '' }} Distribution
-        
-        This package contains the RT11 Extractor with GUI and CLI tools.
-        The GUI automatically detects and uses the CLI tools in the same directory.
-        
-        Included tools:
-        - RT11ExtractGUI: Graphical interface (main application)
-        - rt11extract: RT-11 filesystem extractor
-        - rt11extract_universal: Universal filesystem extractor (recommended)
-        - universal_extractor: Universal image extractor
-        - ods1_extractor: RSX-11M+ (ODS-1) filesystem extractor
-        - imd2raw: ImageDisk (IMD) to RAW converter
-        
-        Usage:
-        GUI Mode: ./RT11ExtractGUI
-        CLI Mode: ./rt11extract_universal <disk_image>
-        
-        The GUI will automatically find and use the CLI tools from the same directory.
-        All tools support --help for detailed usage information.
-        
-        Supported formats: .dsk, .img, .imd disk images
-        Supported filesystems: RT-11, Unix PDP-11, RSX-11M+ (ODS-1)
-        EOF
-        
-        # Create tar.gz package
-        echo "Creating final package..."
-        tar -czf "RT11Extract-Linux${ARCH_SUFFIX}.tar.gz" "RT11Extract-Linux${ARCH_SUFFIX}"
-        echo "Package created: RT11Extract-Linux${ARCH_SUFFIX}.tar.gz"
-        echo "Files in current directory after packaging:"
+        echo "Files in current directory:"
         ls -la
-        echo "Files in RT11Extract-Linux${ARCH_SUFFIX} directory:"
-        ls -la "RT11Extract-Linux${ARCH_SUFFIX}"
+        echo "Files in RT11Extract-Linux-arm64 directory:"
+        ls -la "RT11Extract-Linux-arm64"
 
     - name: Upload Linux x64 Artifact
       if: matrix.arch == 'x64'
